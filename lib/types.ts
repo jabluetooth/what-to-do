@@ -20,6 +20,15 @@ export interface RandomIdea {
   platformTag: PlatformHint;
 }
 
+export type StackCategory = "frontend" | "backend" | "database" | "hosting" | "auth";
+
+export interface StackPieceChoice {
+  choice: string;
+  rationale: string;
+}
+
+export type StackRecommendation = Record<StackCategory, StackPieceChoice>;
+
 export type PipelineStage = "intake" | "prd" | "stack" | "boilerplate" | "preview";
 
 export interface PendingClarification {
@@ -33,6 +42,9 @@ export interface GuestSession {
   pendingClarification?: PendingClarification | null;
   prdSections?: PrdSection[];
   prdLowConfidence?: boolean;
+  stack?: StackRecommendation;
+  /** Set when the PRD changes after a stack was generated (PRD -> stack staleness cascade). */
+  stackStale?: boolean;
   currentStage: PipelineStage;
   createdAt: string;
   updatedAt: string;

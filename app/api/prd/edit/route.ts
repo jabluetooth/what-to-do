@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getOrInitGuestSession, writeGuestSession } from "@/lib/redis/guestSession";
 import { PRD_SECTION_DEFS } from "@/lib/llm/prd";
 import { replaceSection } from "@/lib/pipeline/prdSections";
+import { markStackStaleIfPresent } from "@/lib/pipeline/staleness";
 
 const SECTION_KEYS = PRD_SECTION_DEFS.map((s) => s.key) as [string, ...string[]];
 
@@ -23,8 +24,9 @@ export async function POST(request: Request) {
   }
 
   session.prdSections = replaceSection(session.prdSections, parsed.data.sectionKey, parsed.data.content);
+  markStackStaleIfPresent(session);
   session.updatedAt = new Date().toISOString();
   await writeGuestSession(sessionId, session);
 
-  return NextResponse.json({ sections: session.prdSections });
+  return NextResponse.json({ sections: session.prdSections, stackStale: session.stackStale ?? false });
 }

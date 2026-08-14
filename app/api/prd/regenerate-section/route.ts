@@ -4,6 +4,7 @@ import { getOrInitGuestSession, writeGuestSession } from "@/lib/redis/guestSessi
 import { enforceGuestGenerationCap, RateLimitExceededError } from "@/lib/redis/rateLimit";
 import { PRD_SECTION_DEFS, regeneratePrdSection } from "@/lib/llm/prd";
 import { replaceSection } from "@/lib/pipeline/prdSections";
+import { markStackStaleIfPresent } from "@/lib/pipeline/staleness";
 
 const SECTION_KEYS = PRD_SECTION_DEFS.map((s) => s.key) as [string, ...string[]];
 
@@ -32,17 +33,26 @@ export async function POST(request: Request) {
     throw err;
   }
 
-  const newSection = await regeneratePrdSection({
-    prompt: session.prompt,
-    hints: session.hints,
-    existingSections: session.prdSections,
-    targetKey: parsed.data.sectionKey,
-    instructions: parsed.data.instructions,
-  });
+  let newSection;
+  try {
+    newSection = await regeneratePrdSection({
+      prompt: session.prompt,
+      hints: session.hints,
+      existingSections: session.prdSections,
+      targetKey: parsed.data.sectionKey,
+      instructions: parsed.data.instructions,
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Couldn't regenerate this section right now. Please try again in a moment." },
+      { status: 502 }
+    );
+  }
 
   session.prdSections = replaceSection(session.prdSections, newSection.key, newSection.content);
+  markStackStaleIfPresent(session);
   session.updatedAt = new Date().toISOString();
   await writeGuestSession(sessionId, session);
 
-  return NextResponse.json({ sections: session.prdSections });
+  return NextResponse.json({ sections: session.prdSections, stackStale: session.stackStale ?? false });
 }

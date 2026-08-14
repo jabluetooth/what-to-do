@@ -1,7 +1,8 @@
 "use client";
 
 import { useId, useState } from "react";
-import type { PlatformHint, PrdSection, RandomIdea, ScopeSizeHint } from "@/lib/types";
+import type { PlatformHint, PrdSection, RandomIdea, ScopeSizeHint, StackCategory, StackRecommendation } from "@/lib/types";
+import { STACK_ALTERNATIVES } from "@/lib/pipeline/stackMatrix";
 
 type FlowState =
   | { phase: "idle" }
@@ -9,6 +10,14 @@ type FlowState =
   | { phase: "clarifying"; question: string; submitting: boolean }
   | { phase: "result"; sections: PrdSection[]; lowConfidence: boolean }
   | { phase: "error"; message: string };
+
+const STACK_CATEGORIES: { key: StackCategory; label: string }[] = [
+  { key: "frontend", label: "Frontend" },
+  { key: "backend", label: "Backend" },
+  { key: "database", label: "Database" },
+  { key: "hosting", label: "Hosting" },
+  { key: "auth", label: "Auth" },
+];
 
 export default function Home() {
   const [prompt, setPrompt] = useState("");
@@ -27,12 +36,20 @@ export default function Home() {
   const [sectionBusyKey, setSectionBusyKey] = useState<string | null>(null);
   const [sectionError, setSectionError] = useState<string | null>(null);
 
+  const [stack, setStack] = useState<StackRecommendation | null>(null);
+  const [stackStale, setStackStale] = useState(false);
+  const [stackLoading, setStackLoading] = useState(false);
+  const [stackError, setStackError] = useState<string | null>(null);
+  const [overridingCategory, setOverridingCategory] = useState<StackCategory | null>(null);
+  const [overrideChoice, setOverrideChoice] = useState("");
+
   const promptId = useId();
   const platformId = useId();
   const scopeId = useId();
   const stackId = useId();
   const answerId = useId();
   const sectionEditId = useId();
+  const stackOverrideId = useId();
 
   const hints = () => ({
     platform: platform || undefined,
@@ -101,6 +118,11 @@ export default function Home() {
     setDraftContent("");
     setSectionBusyKey(null);
     setSectionError(null);
+    setStack(null);
+    setStackStale(false);
+    setStackError(null);
+    setOverridingCategory(null);
+    setOverrideChoice("");
   }
 
   function startEdit(section: PrdSection) {
@@ -130,6 +152,7 @@ export default function Home() {
         return;
       }
       setState((prev) => (prev.phase === "result" ? { ...prev, sections: data.sections } : prev));
+      if (stack && data.stackStale) setStackStale(true);
       setEditingKey(null);
     } catch {
       setSectionError("Network error — please try again.");
@@ -153,10 +176,65 @@ export default function Home() {
         return;
       }
       setState((prev) => (prev.phase === "result" ? { ...prev, sections: data.sections } : prev));
+      if (stack && data.stackStale) setStackStale(true);
     } catch {
       setSectionError("Network error — please try again.");
     } finally {
       setSectionBusyKey(null);
+    }
+  }
+
+  async function generateStack() {
+    setStackLoading(true);
+    setStackError(null);
+    try {
+      const res = await fetch("/api/stack/generate", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setStackError(data.error ?? "Couldn't generate a stack recommendation. Please try again.");
+        return;
+      }
+      setStack(data.stack);
+      setStackStale(false);
+    } catch {
+      setStackError("Network error — please try again.");
+    } finally {
+      setStackLoading(false);
+    }
+  }
+
+  function startOverride(category: StackCategory, currentChoice: string) {
+    setOverridingCategory(category);
+    setOverrideChoice(currentChoice);
+    setStackError(null);
+  }
+
+  function cancelOverride() {
+    setOverridingCategory(null);
+    setOverrideChoice("");
+  }
+
+  async function saveOverride(category: StackCategory) {
+    if (!overrideChoice.trim()) return;
+    setStackLoading(true);
+    setStackError(null);
+    try {
+      const res = await fetch("/api/stack/override", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category, choice: overrideChoice }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setStackError(data.error ?? "Couldn't save the override. Please try again.");
+        return;
+      }
+      setStack(data.stack);
+      setOverridingCategory(null);
+    } catch {
+      setStackError("Network error — please try again.");
+    } finally {
+      setStackLoading(false);
     }
   }
 
@@ -445,6 +523,120 @@ export default function Home() {
               </section>
             );
           })}
+
+          <div className="border-t border-neutral-200 dark:border-neutral-800 pt-6">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-xl font-semibold">Tech Stack</h2>
+              {stack && (
+                <button
+                  type="button"
+                  onClick={generateStack}
+                  disabled={stackLoading}
+                  className="text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:underline disabled:opacity-50"
+                >
+                  {stackLoading ? "Regenerating…" : "Regenerate stack"}
+                </button>
+              )}
+            </div>
+
+            {stackStale && stack && (
+              <div className="mt-2 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+                The PRD changed since this stack was generated — it may be out of date.
+              </div>
+            )}
+
+            {stackError && (
+              <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="status" aria-live="polite">
+                {stackError}
+              </p>
+            )}
+
+            {!stack && (
+              <button
+                type="button"
+                onClick={generateStack}
+                disabled={stackLoading}
+                className="mt-3 rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium disabled:opacity-50"
+              >
+                {stackLoading ? "Generating…" : "Generate Tech Stack"}
+              </button>
+            )}
+
+            {stack && (
+              <div className="mt-3 space-y-4">
+                {STACK_CATEGORIES.map(({ key, label }) => {
+                  const piece = stack[key];
+                  const isOverriding = overridingCategory === key;
+
+                  return (
+                    <div key={key}>
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
+                          {label}
+                        </h3>
+                        {!isOverriding && (
+                          <button
+                            type="button"
+                            onClick={() => startOverride(key, piece.choice)}
+                            disabled={stackLoading}
+                            className="text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:underline disabled:opacity-50"
+                          >
+                            Override
+                          </button>
+                        )}
+                      </div>
+
+                      {isOverriding ? (
+                        <div className="mt-1 space-y-2">
+                          <label htmlFor={`${stackOverrideId}-${key}`} className="sr-only">
+                            Override {label}
+                          </label>
+                          <input
+                            id={`${stackOverrideId}-${key}`}
+                            list={`${stackOverrideId}-${key}-options`}
+                            type="text"
+                            value={overrideChoice}
+                            onChange={(e) => setOverrideChoice(e.target.value)}
+                            disabled={stackLoading}
+                            className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+                          />
+                          <datalist id={`${stackOverrideId}-${key}-options`}>
+                            {STACK_ALTERNATIVES[key].map((alt) => (
+                              <option key={alt} value={alt} />
+                            ))}
+                          </datalist>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => saveOverride(key)}
+                              disabled={stackLoading || !overrideChoice.trim()}
+                              className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                            >
+                              {stackLoading ? "Saving…" : "Save"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelOverride}
+                              disabled={stackLoading}
+                              className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="mt-1 text-sm font-medium">{piece.choice}</p>
+                          <p className="mt-0.5 text-sm text-neutral-600 dark:text-neutral-400">{piece.rationale}</p>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           <button
             type="button"
             onClick={startOver}
