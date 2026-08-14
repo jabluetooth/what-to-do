@@ -364,7 +364,11 @@ export default function Home() {
     setStackLoading(true);
     setStackError(null);
     try {
-      const res = await fetch("/api/stack/generate", { method: "POST" });
+      const res = await fetch("/api/stack/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hints: hints() }),
+      });
       const data = await res.json();
       if (!res.ok) {
         setStackError(data.error ?? "Couldn't generate a stack recommendation. Please try again.");
@@ -827,6 +831,49 @@ export default function Home() {
                   {stackLoading ? "Regenerating…" : "Regenerate stack"}
                 </button>
               )}
+            </div>
+
+            {/*
+              These mirror the intake form's hint fields, which only ever apply to the very
+              first prompt submission — there's otherwise no way to bias the stack recommendation
+              (e.g. "I know FastAPI") once a PRD already exists. Editable here too, and sent on
+              every generate/regenerate.
+            */}
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <select
+                id={platformId}
+                value={platform}
+                onChange={(e) => setPlatform(e.target.value as PlatformHint | "")}
+                disabled={stackLoading}
+                aria-label="Platform preference"
+                className="rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-2 py-1.5 text-xs"
+              >
+                <option value="">Platform: no preference</option>
+                <option value="web">Platform: Web</option>
+                <option value="mobile">Platform: Mobile</option>
+              </select>
+              <select
+                id={scopeId}
+                value={scopeSize}
+                onChange={(e) => setScopeSize(e.target.value as ScopeSizeHint | "")}
+                disabled={stackLoading}
+                aria-label="Scope size"
+                className="rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-2 py-1.5 text-xs"
+              >
+                <option value="">Scope: no preference</option>
+                <option value="weekend">Scope: Weekend project</option>
+                <option value="mvp">Scope: MVP</option>
+                <option value="production">Scope: Production app</option>
+              </select>
+              <input
+                id={stackId}
+                type="text"
+                value={stackFamiliarity}
+                onChange={(e) => setStackFamiliarity(e.target.value)}
+                disabled={stackLoading}
+                placeholder="Stacks you know, e.g. FastAPI, Vue"
+                className="rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-2 py-1.5 text-xs"
+              />
             </div>
 
             {stackStale && stack && (
