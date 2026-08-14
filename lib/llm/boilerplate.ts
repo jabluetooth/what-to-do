@@ -1,83 +1,154 @@
 import { z } from "zod";
 import { MODEL_QUALITY, MODEL_FAST } from "@/lib/groq";
 import { callGroqTool } from "@/lib/llm/callTool";
+import { generateCodeFile } from "@/lib/llm/generateCode";
 import type { PrdSection } from "@/lib/types";
 
-/** Flat schema — one string field per generated file, same reliability lesson as PRD/stack generation. */
-const BoilerplateFillInSchema = z.object({
-  mainResourceName: z
-    .string()
-    .min(1)
-    .regex(/^[a-z][a-z0-9_]*$/, "must be lowercase, plural, snake/URL-safe (e.g. 'invoices')"),
-  schemaFileContent: z.string().min(1),
-  mainRouteFileContent: z.string().min(1),
-  homePageFileContent: z.string().min(1),
+const RESOURCE_NAME_REGEX = /^[a-z][a-z0-9_]*$/;
+
+const ResourceNameSchema = z.object({
+  mainResourceName: z.string().min(1).regex(RESOURCE_NAME_REGEX, "must be lowercase, plural, snake/URL-safe"),
 });
 
-export type BoilerplateFillIn = z.infer<typeof BoilerplateFillInSchema>;
-
-const BOILERPLATE_TOOL = {
+const RESOURCE_NAME_TOOL = {
   type: "function" as const,
   function: {
-    name: "emit_boilerplate_fillin",
-    description: "Emit app-specific fill-in content for a Next.js + Drizzle + Postgres starter template.",
+    name: "emit_resource_name",
+    description: "Pick this app's single central data resource and name it.",
     parameters: {
       type: "object",
       properties: {
         mainResourceName: {
           type: "string",
-          description: "Lowercase, plural, URL-safe identifier for the app's main data resource (e.g. 'invoices', 'recipes').",
-        },
-        schemaFileContent: {
-          type: "string",
-          description:
-            "Full content of lib/db/schema.ts: a Drizzle pgTable definition for the main resource, using imports from 'drizzle-orm/pg-core'.",
-        },
-        mainRouteFileContent: {
-          type: "string",
-          description:
-            "Full content of the main API route file: GET (list) and POST (create) handlers. Next.js App Router route handlers take the request as a direct positional parameter, NOT destructured from an object: `export async function POST(request: Request) { const body = await request.json(); ... }` — never `POST({ request }: {...})`. Import { db } from '@/lib/db/client' and the table from '@/lib/db/schema'.",
-        },
-        homePageFileContent: {
-          type: "string",
-          description:
-            "Full content of app/page.tsx: a real, app-specific homepage (hero + core feature summary) describing this app. Must NOT query the database directly — keep it static content only, since it needs to build successfully before any database is provisioned.",
+          description: "Lowercase, plural, URL-safe identifier for the main resource (e.g. 'invoices', 'trails').",
         },
       },
-      required: ["mainResourceName", "schemaFileContent", "mainRouteFileContent", "homePageFileContent"],
+      required: ["mainResourceName"],
     },
   },
 };
+
+export interface BoilerplateFillIn {
+  mainResourceName: string;
+  schemaFileContent: string;
+  mainRouteFileContent: string;
+  homePageFileContent: string;
+}
 
 function findSection(sections: PrdSection[], key: string): string {
   return sections.find((s) => s.key === key)?.content ?? "";
 }
 
+function baseContext(prompt: string, sections: PrdSection[]): string {
+  return [
+    `App idea prompt: "${prompt}"`,
+    `Problem statement: ${findSection(sections, "problem_statement")}`,
+    `Target user: ${findSection(sections, "target_user")}`,
+    `Core features: ${findSection(sections, "core_features")}`,
+  ].join("\n");
+}
+
+/** Short, simple, escape-free field — tool-calling is fine here, unlike the code content below. */
+async function pickResourceName(input: { prompt: string; sections: PrdSection[] }): Promise<string> {
+  const { mainResourceName } = await callGroqTool({
+    model: MODEL_QUALITY,
+    fallbackModel: MODEL_FAST,
+    maxTokens: 100,
+    tool: RESOURCE_NAME_TOOL,
+    userContent: `${baseContext(input.prompt, input.sections)}\n\nPick the one core data entity this app most revolves around (not every feature — just this slice) and name it.`,
+    schema: ResourceNameSchema,
+  });
+  return mainResourceName;
+}
+
+async function generateSchema(input: {
+  prompt: string;
+  sections: PrdSection[];
+  mainResourceName: string;
+}): Promise<string> {
+  const example = `import { pgTable, serial, text, timestamp, integer } from "drizzle-orm/pg-core";
+
+export const categories = pgTable("categories", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+});
+
+export const trails = pgTable("trails", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  rating: integer("rating"),
+  categoryId: integer("category_id").references(() => categories.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});`;
+
+  return generateCodeFile({
+    model: MODEL_QUALITY,
+    fallbackModel: MODEL_FAST,
+    maxTokens: 700,
+    instructions: `${baseContext(input.prompt, input.sections)}\n\nWrite lib/db/schema.ts for a Drizzle table named "${input.mainResourceName}", following this exact pattern (adapt columns/tables to the app, keep the same import style — every column helper used must be imported from 'drizzle-orm/pg-core'). If the app needs a relationship between two tables, use \`.references(() => otherTable.column)\` directly on the referencing column exactly as shown below — do not import or use \`relationship\`, \`foreignKey\`, \`belongsTo\`, \`many\`, or any other helper name; those do not exist in this API:\n\n${example}`,
+  });
+}
+
+async function generateRoute(input: {
+  prompt: string;
+  sections: PrdSection[];
+  mainResourceName: string;
+  schemaFileContent: string;
+}): Promise<string> {
+  const example = `import { NextResponse } from "next/server";
+import { db } from "@/lib/db/client";
+import { trails } from "@/lib/db/schema";
+
+export async function GET(request: Request) {
+  const results = await db.select().from(trails);
+  return NextResponse.json(results);
+}
+
+export async function POST(request: Request) {
+  const body = await request.json();
+  const [created] = await db.insert(trails).values(body).returning();
+  return NextResponse.json(created, { status: 201 });
+}`;
+
+  return generateCodeFile({
+    model: MODEL_QUALITY,
+    fallbackModel: MODEL_FAST,
+    maxTokens: 600,
+    instructions: `${baseContext(input.prompt, input.sections)}\n\nThis is the schema already defined in lib/db/schema.ts:\n\n${input.schemaFileContent}\n\nWrite app/api/${input.mainResourceName}/route.ts with GET (list) and POST (create) handlers, following this exact pattern — request is a plain positional parameter, never destructured from an object, and the table is referenced by its actual imported binding (e.g. \`.from(trails)\`), never as a string like \`.from('trails')\`:\n\n${example}`,
+  });
+}
+
+async function generateHomePage(input: { prompt: string; sections: PrdSection[] }): Promise<string> {
+  return generateCodeFile({
+    model: MODEL_QUALITY,
+    fallbackModel: MODEL_FAST,
+    maxTokens: 600,
+    instructions: `${baseContext(input.prompt, input.sections)}\n\nWrite app/page.tsx as a real React Server Component (default export, no props) with static, app-specific content — a hero section and a short feature summary reflecting this exact app idea, not generic placeholder text. Do not import or call the database.`,
+  });
+}
+
 /**
  * v1 scope: fills in one representative slice of the app (schema + one API route + homepage),
- * not the entire application — matches PRD §6.4 ("LLM-generated fill-in for app-specific pieces...
- * rather than generating an entire project from scratch"). The homepage is deliberately static
- * (no live DB call) so the build-validation step (lib/sandbox/validate.ts) tests real compile
- * correctness without also requiring a live database to exist during validation.
+ * not the entire application — matches PRD §6.4. Resource naming uses tool-calling (short,
+ * simple, escape-free); the three code files use generateCodeFile's plain-text-plus-fence
+ * approach instead — see that module for why. The route call is given the already-generated
+ * schema as context so they agree with each other (same table binding, same columns). Schema
+ * and homepage don't depend on each other and run in parallel; the route call needs the
+ * schema's content first.
  */
 export async function generateBoilerplateFillIn(input: {
   prompt: string;
   sections: PrdSection[];
 }): Promise<BoilerplateFillIn> {
-  const context = [
-    `App idea prompt: "${input.prompt}"`,
-    `Problem statement: ${findSection(input.sections, "problem_statement")}`,
-    `Target user: ${findSection(input.sections, "target_user")}`,
-    `Core features: ${findSection(input.sections, "core_features")}`,
-    `User stories: ${findSection(input.sections, "user_stories")}`,
-  ].join("\n");
+  const mainResourceName = await pickResourceName(input);
 
-  return callGroqTool({
-    model: MODEL_QUALITY,
-    fallbackModel: MODEL_FAST,
-    maxTokens: 3000,
-    tool: BOILERPLATE_TOOL,
-    userContent: `${context}\n\nGenerate app-specific fill-in for a Next.js (App Router, TypeScript) + Drizzle ORM + Postgres starter, focused on this app's single most central data resource (pick the one core entity the app most revolves around — not every feature, just this slice). Write real, compilable TypeScript — no placeholder comments like "// TODO", no pseudocode. The schema and route must use Drizzle's postgres-js patterns (pgTable, serial/text/timestamp/etc from 'drizzle-orm/pg-core'; db.select()/db.insert() from the client). Route handlers take the request as a plain positional parameter — "export async function POST(request: Request) {" — never destructured from an object. The homepage must be static content only — describe the app, do not call the database.`,
-    schema: BoilerplateFillInSchema,
-  });
+  const [schemaFileContent, homePageFileContent] = await Promise.all([
+    generateSchema({ ...input, mainResourceName }),
+    generateHomePage(input),
+  ]);
+
+  const mainRouteFileContent = await generateRoute({ ...input, mainResourceName, schemaFileContent });
+
+  return { mainResourceName, schemaFileContent, mainRouteFileContent, homePageFileContent };
 }

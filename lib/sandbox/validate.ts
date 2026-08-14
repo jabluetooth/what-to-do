@@ -67,6 +67,11 @@ interface CommandResult {
 
 function runCommand(command: string, args: string[], cwd: string, timeoutMs: number): Promise<CommandResult> {
   return new Promise((resolve) => {
+    // shell:true is required on Windows: .cmd files (npm) aren't real Win32 executables and
+    // can't be spawned via execFile without a shell to interpret them — confirmed live that
+    // removing it (to silence Node's DEP0190 warning) made the spawn silently no-op instead,
+    // hanging the job forever. DEP0190 isn't exploitable here since args are hardcoded
+    // literals, never user input, so it's the right one to leave as a warning, not "fix".
     execFile(
       command,
       args,

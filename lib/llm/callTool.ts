@@ -135,33 +135,41 @@ function recoverFromFailedGeneration<T>(err: unknown, toolName: string, schema: 
 }
 
 /**
- * Two concrete, reproducible malformations observed from Groq's text-fallback path,
+ * Three concrete, reproducible malformations observed from Groq's text-fallback path,
  * fixed up before JSON.parse rather than treated as unrecoverable:
  *   1. Literal control characters (raw newlines/tabs) embedded inside string values
  *      instead of escaped — happens when the model generates a bulleted list inside
  *      a string field. JSON requires `\n`, not a literal newline byte.
  *   2. Python-style `True`/`False`/`None` used instead of JSON's `true`/`false`/`null`.
- * Both fixes are string-state-aware so they never touch legitimate string content
- * (e.g. the English word "False" appearing inside prose is left untouched).
+ *   3. Backtick template-literal syntax used as the string delimiter instead of double
+ *      quotes (`"code": \`...\`` instead of `"code": "..."`) — a habit bleeding in from
+ *      generating JS/TS code. Both delimiters are normalized to `"` on output; a literal
+ *      `"` found inside a backtick-delimited value is escaped so it doesn't prematurely
+ *      close the rewritten string.
+ * All fixes are string-state-aware so they never touch legitimate string content (e.g.
+ * the English word "False" in prose, or a real template literal nested inside a
+ * properly double-quoted value, are both left untouched).
  */
 function sanitizeJsonLikeText(text: string): string {
   let out = "";
-  let inString = false;
+  let stringDelim: '"' | "`" | null = null;
   let escaped = false;
 
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
 
-    if (inString) {
+    if (stringDelim) {
       if (escaped) {
         out += ch;
         escaped = false;
       } else if (ch === "\\") {
         out += ch;
         escaped = true;
-      } else if (ch === '"') {
-        inString = false;
-        out += ch;
+      } else if (ch === stringDelim) {
+        out += '"'; // normalize whichever delimiter opened this string to a JSON double-quote
+        stringDelim = null;
+      } else if (ch === '"' && stringDelim === "`") {
+        out += '\\"'; // a literal " inside a backtick string must be escaped once we rewrite the delimiter
       } else if (ch === "\n") {
         out += "\\n";
       } else if (ch === "\r") {
@@ -174,9 +182,9 @@ function sanitizeJsonLikeText(text: string): string {
       continue;
     }
 
-    if (ch === '"') {
-      inString = true;
-      out += ch;
+    if (ch === '"' || ch === "`") {
+      stringDelim = ch;
+      out += '"';
       continue;
     }
 
@@ -220,26 +228,32 @@ function matchPythonLiteral(text: string, i: number): { replacement: string; len
  * "</function>"), which breaks JSON.parse even though the object itself is
  * valid — this stops exactly at the matching closing brace and ignores
  * anything after it.
+ *
+ * Tracks both `"` and backtick as string delimiters (independently — only the
+ * character that opened a string closes it): a value delimited by backticks
+ * instead of quotes is a real observed pattern (see sanitizeJsonLikeText), and
+ * without this, braces inside that backtick-delimited code (function bodies,
+ * object literals) would miscount the depth before sanitization ever runs.
  */
 function extractJsonObject(text: string, fromIndex: number): string | null {
   const start = text.indexOf("{", fromIndex);
   if (start === -1) return null;
 
   let depth = 0;
-  let inString = false;
+  let stringDelim: '"' | "`" | null = null;
   let escaped = false;
 
   for (let i = start; i < text.length; i++) {
     const ch = text[i];
 
-    if (inString) {
+    if (stringDelim) {
       if (escaped) escaped = false;
       else if (ch === "\\") escaped = true;
-      else if (ch === '"') inString = false;
+      else if (ch === stringDelim) stringDelim = null;
       continue;
     }
 
-    if (ch === '"') inString = true;
+    if (ch === '"' || ch === "`") stringDelim = ch;
     else if (ch === "{") depth++;
     else if (ch === "}") {
       depth--;
