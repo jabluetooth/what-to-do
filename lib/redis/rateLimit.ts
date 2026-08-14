@@ -21,7 +21,7 @@ const GENERATION_LIMITS: Record<UserTier, Record<string, number>> = {
     prd: 5,
     ideas: 5,
     stack: 10,
-    boilerplate: 1,
+    boilerplate: 2,
   },
   signedIn: {
     prd: 10,
