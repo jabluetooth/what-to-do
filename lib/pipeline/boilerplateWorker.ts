@@ -4,6 +4,7 @@ import { loadTemplate, type TemplateFile } from "@/lib/pipeline/template";
 import { generateBoilerplateFillIn } from "@/lib/llm/boilerplate";
 import { writeProjectFiles, buildZip, writeProjectZip } from "@/lib/pipeline/projectFiles";
 import { validateBoilerplate } from "@/lib/sandbox/validate";
+import { refundGenerationCap } from "@/lib/redis/rateLimit";
 
 const MAX_LOG_CHARS = 4000;
 
@@ -47,6 +48,10 @@ export async function runBoilerplateJob(jobId: string): Promise<void> {
     const session = await readGuestSession(job.sessionId);
     if (!session || !session.prdSections || !session.prompt) {
       await updateJob(jobId, { state: "failed", progress: 100, error: "Session or PRD missing." });
+      // Not the user's fault (session expired/race, not a bad generation) — and only refund the
+      // one cap unit the original /api/boilerplate/generate call actually consumed, not on a
+      // retry that never incremented it again.
+      if (job.attempt === 1) await refundGenerationCap(job.sessionId, "boilerplate");
       return;
     }
 
@@ -87,6 +92,12 @@ export async function runBoilerplateJob(jobId: string): Promise<void> {
           message: "Build validation failed",
           error: validation.log.slice(-MAX_LOG_CHARS),
         });
+        // Only refund for a platform-side failure (sandbox ran out of disk), not an ordinary
+        // failed build check — that already spent real LLM/compute cost, which the cap exists
+        // to protect against. Same attempt===1 reasoning as the session-missing case above.
+        if (validation.diskFull && job.attempt === 1) {
+          await refundGenerationCap(job.sessionId, "boilerplate");
+        }
         return;
       }
 

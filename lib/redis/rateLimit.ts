@@ -56,3 +56,20 @@ export async function enforceGenerationCap(
     throw new RateLimitExceededError(stage, limit, tier);
   }
 }
+
+/**
+ * Gives back a cap unit consumed by a submission that never got a real shot — a platform-side
+ * failure (e.g. the sandbox validator's disk quota), not a bad generation. Deliberately not
+ * called for ordinary generation failures (bad LLM output, a failed build check on legit
+ * grounds): those already spent real LLM/compute cost, which is what the cap protects against.
+ * DECR going below zero is harmless — Redis allows negative counters, and it just means the
+ * next real submission needs to climb back past zero before the limit bites again.
+ */
+export async function refundGenerationCap(
+  sessionId: string,
+  stage: string,
+  tier: UserTier = "guest"
+): Promise<void> {
+  if (!GENERATION_LIMITS[tier][stage]) return;
+  await getRedis().decr(`guest:${sessionId}:genCount:${stage}`);
+}

@@ -7,6 +7,8 @@ import type { TemplateFile } from "@/lib/pipeline/template";
 export interface ValidationResult {
   passed: boolean;
   log: string;
+  /** True when the failure was the sandbox running out of local disk quota, not a bad generation. */
+  diskFull: boolean;
 }
 
 const INSTALL_TIMEOUT_MS = 180_000;
@@ -117,8 +119,8 @@ export async function validateBoilerplate(
     );
     log.push(install.stdout, install.stderr);
     if (install.code !== 0) {
-      noteIfDiskFull(log, install.stdout, install.stderr);
-      return { passed: false, log: log.join("\n") };
+      const diskFull = noteIfDiskFull(log, install.stdout, install.stderr);
+      return { passed: false, log: log.join("\n"), diskFull };
     }
 
     await onPhase?.("build");
@@ -133,11 +135,9 @@ export async function validateBoilerplate(
     log.push(`$ ${nextBin} build`);
     const build = await runCommand(nextBin, ["build"], dir, BUILD_TIMEOUT_MS, childEnv);
     log.push(build.stdout, build.stderr);
-    if (build.code !== 0) {
-      noteIfDiskFull(log, build.stdout, build.stderr);
-    }
+    const buildDiskFull = build.code !== 0 && noteIfDiskFull(log, build.stdout, build.stderr);
 
-    return { passed: build.code === 0, log: log.join("\n") };
+    return { passed: build.code === 0, log: log.join("\n"), diskFull: buildDiskFull };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -147,16 +147,19 @@ export async function validateBoilerplate(
  * ENOSPC here means the platform's ephemeral disk quota (e.g. Vercel Hobby's fixed 512MB
  * /tmp) filled up mid-install/build — a real limitation of this interim local-subprocess
  * validator (see its module doc comment), not a problem with the generated code. Surfacing
- * it distinctly in the log means a failed job doesn't get misread as bad LLM output.
+ * it distinctly in the log means a failed job doesn't get misread as bad LLM output, and the
+ * returned boolean lets the caller refund the generation cap for what wasn't the user's fault.
  */
-function noteIfDiskFull(log: string[], stdout: string, stderr: string): void {
-  if (stdout.includes("ENOSPC") || stderr.includes("ENOSPC")) {
+function noteIfDiskFull(log: string[], stdout: string, stderr: string): boolean {
+  const diskFull = stdout.includes("ENOSPC") || stderr.includes("ENOSPC");
+  if (diskFull) {
     log.push(
       "\nNOTE: this failure was \"no space left on device\" (ENOSPC), not a code generation " +
         "problem — the sandbox validator ran out of local disk quota (common on free-tier " +
         "serverless /tmp limits). Retrying may succeed on a fresh container."
     );
   }
+  return diskFull;
 }
 
 interface CommandResult {
