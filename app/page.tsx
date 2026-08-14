@@ -1,8 +1,17 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { PlatformHint, PrdSection, RandomIdea, ScopeSizeHint, StackCategory, StackRecommendation } from "@/lib/types";
 import { STACK_ALTERNATIVES } from "@/lib/pipeline/stackMatrix";
+
+const SESSION_POLL_INTERVAL_MS = 30_000;
+const TIMEOUT_WARNING_THRESHOLD_SECONDS = 5 * 60;
+
+function formatDuration(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${seconds}s`;
+}
 
 type FlowState =
   | { phase: "idle" }
@@ -52,6 +61,12 @@ export default function Home() {
   const [boilerplateError, setBoilerplateError] = useState<string | null>(null);
   const [boilerplateStale, setBoilerplateStale] = useState(false);
 
+  const [sessionTtlSeconds, setSessionTtlSeconds] = useState<number | null>(null);
+  const [signUpMessage, setSignUpMessage] = useState<string | null>(null);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [exiting, setExiting] = useState(false);
+  const [keepingWorking, setKeepingWorking] = useState(false);
+
   const promptId = useId();
   const platformId = useId();
   const scopeId = useId();
@@ -65,6 +80,47 @@ export default function Home() {
     scopeSize: scopeSize || undefined,
     stackFamiliarity: stackFamiliarity.trim() || undefined,
   });
+
+  const hasProject = state.phase === "result";
+
+  // Polls the session's remaining inactivity-timeout TTL to drive the warning banner —
+  // only once a project actually exists, so an idle visitor with nothing to lose isn't polled.
+  useEffect(() => {
+    if (!hasProject) return;
+
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const res = await fetch("/api/guest/session");
+        const data = await res.json();
+        if (!cancelled && res.ok) setSessionTtlSeconds(data.ttlSeconds);
+      } catch {
+        // transient — the next scheduled poll will retry
+      }
+    }
+
+    poll();
+    const interval = setInterval(poll, SESSION_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [hasProject]);
+
+  // Best-effort purge on tab close (PRD §5.1.6/§10): can't show a confirmation prompt here,
+  // and isn't guaranteed to run (crashes, force-quits) — the R2 lifecycle rule and Redis TTL
+  // are the real backstop. sendBeacon fires the request without blocking the page unload.
+  useEffect(() => {
+    if (!hasProject) return;
+
+    function handlePageHide() {
+      navigator.sendBeacon("/api/guest/exit");
+    }
+
+    window.addEventListener("pagehide", handlePageHide);
+    return () => window.removeEventListener("pagehide", handlePageHide);
+  }, [hasProject]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -138,6 +194,45 @@ export default function Home() {
     setBoilerplateMessage("");
     setBoilerplateError(null);
     setBoilerplateStale(false);
+    setSessionTtlSeconds(null);
+    setSignUpMessage(null);
+    setShowExitConfirm(false);
+  }
+
+  function requestStartOver() {
+    setShowExitConfirm(true);
+  }
+
+  async function discardAndStartOver() {
+    setExiting(true);
+    try {
+      await fetch("/api/guest/exit", { method: "POST" });
+    } catch {
+      // best effort — proceed with the local reset regardless; the R2 lifecycle rule and
+      // Redis TTL remain as the backstop if this particular purge call failed
+    } finally {
+      setExiting(false);
+      startOver();
+    }
+  }
+
+  function handleSignUpClick() {
+    setSignUpMessage(
+      "Sign-up isn't available yet — for now, download your files or copy your PRD before leaving. Guest sessions aren't saved."
+    );
+  }
+
+  async function keepWorking() {
+    setKeepingWorking(true);
+    try {
+      const res = await fetch("/api/guest/heartbeat", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) setSessionTtlSeconds(data.ttlSeconds);
+    } catch {
+      // transient — the regular poll will pick up the real state on its next tick
+    } finally {
+      setKeepingWorking(false);
+    }
   }
 
   function startEdit(section: PrdSection) {
@@ -534,6 +629,45 @@ export default function Home() {
 
       {state.phase === "result" && (
         <div className="mt-8 space-y-6">
+          {sessionTtlSeconds !== null && sessionTtlSeconds < TIMEOUT_WARNING_THRESHOLD_SECONDS ? (
+            <div className="rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+              <p role="status" aria-live="polite">
+                Your session expires in {formatDuration(sessionTtlSeconds)} due to inactivity — guest work isn&apos;t
+                saved.
+              </p>
+              <div className="mt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={keepWorking}
+                  disabled={keepingWorking}
+                  className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+                >
+                  {keepingWorking ? "Refreshing…" : "Keep working"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSignUpClick}
+                  className="text-xs font-medium underline"
+                >
+                  Sign up to save
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-neutral-500">
+              Guest session — your work isn&apos;t saved.{" "}
+              <button type="button" onClick={handleSignUpClick} className="underline">
+                Sign up to save
+              </button>
+            </p>
+          )}
+
+          {signUpMessage && (
+            <p className="text-xs text-neutral-600 dark:text-neutral-400" role="status" aria-live="polite">
+              {signUpMessage}
+            </p>
+          )}
+
           {state.lowConfidence && (
             <div className="rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
               This PRD is low-confidence — the idea was still pretty thin after clarification. Worth reviewing closely before generating a stack.
@@ -812,13 +946,44 @@ export default function Home() {
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={startOver}
-            className="rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium"
-          >
-            Start over
-          </button>
+          {!showExitConfirm ? (
+            <button
+              type="button"
+              onClick={requestStartOver}
+              className="rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium"
+            >
+              Start over
+            </button>
+          ) : (
+            <div className="rounded-md border border-neutral-300 dark:border-neutral-700 p-4 space-y-2">
+              <p className="text-sm font-medium">Sign up to save this project before starting over?</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleSignUpClick}
+                  className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium"
+                >
+                  Sign up to save
+                </button>
+                <button
+                  type="button"
+                  onClick={discardAndStartOver}
+                  disabled={exiting}
+                  className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                >
+                  {exiting ? "Discarding…" : "Discard & start over"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowExitConfirm(false)}
+                  disabled={exiting}
+                  className="text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:underline disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </main>

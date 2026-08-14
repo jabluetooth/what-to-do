@@ -1,4 +1,4 @@
-import { PutObjectCommand, GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { PutObjectCommand, GetObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import JSZip from "jszip";
 import { getR2, getR2Bucket } from "@/lib/r2";
 import type { TemplateFile } from "@/lib/pipeline/template";
@@ -72,6 +72,33 @@ export async function listProjectFiles(prefix: string): Promise<FlatFile[]> {
       const result = await r2.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
       const content = (await result.Body?.transformToString()) ?? "";
       return { path: key.slice(prefix.length + 1), content };
+    })
+  );
+}
+
+/** Deletes every object under a prefix, including the zip — used by the explicit guest-exit purge. */
+export async function deleteProjectFiles(prefix: string): Promise<void> {
+  const r2 = getR2();
+  const bucket = getR2Bucket();
+
+  const keys: string[] = [];
+  let continuationToken: string | undefined;
+  do {
+    const page = await r2.send(
+      new ListObjectsV2Command({ Bucket: bucket, Prefix: `${prefix}/`, ContinuationToken: continuationToken })
+    );
+    for (const obj of page.Contents ?? []) {
+      if (obj.Key) keys.push(obj.Key);
+    }
+    continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  if (keys.length === 0) return;
+
+  await r2.send(
+    new DeleteObjectsCommand({
+      Bucket: bucket,
+      Delete: { Objects: keys.map((Key) => ({ Key })) },
     })
   );
 }

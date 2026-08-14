@@ -11,12 +11,8 @@ function sessionKey(id: string): string {
   return `guest:${id}`;
 }
 
-export async function getOrCreateGuestSessionId(): Promise<string> {
+async function setGuestCookie(id: string): Promise<void> {
   const cookieStore = await cookies();
-  const existing = cookieStore.get(COOKIE_NAME)?.value;
-  if (existing) return existing;
-
-  const id = crypto.randomUUID();
   cookieStore.set(COOKIE_NAME, id, {
     httpOnly: true,
     sameSite: "lax",
@@ -24,6 +20,15 @@ export async function getOrCreateGuestSessionId(): Promise<string> {
     path: "/",
     maxAge: GUEST_SESSION_TTL_SECONDS,
   });
+}
+
+export async function getOrCreateGuestSessionId(): Promise<string> {
+  const cookieStore = await cookies();
+  const existing = cookieStore.get(COOKIE_NAME)?.value;
+  if (existing) return existing;
+
+  const id = crypto.randomUUID();
+  await setGuestCookie(id);
   return id;
 }
 
@@ -31,13 +36,32 @@ export async function readGuestSession(id: string): Promise<GuestSession | null>
   return getRedis().get<GuestSession>(sessionKey(id));
 }
 
-/** Sliding TTL: every write refreshes expiry, matching the "inactivity" framing in the PRD. */
+/**
+ * Sliding TTL: every write refreshes both the Redis expiry and the cookie's maxAge. Without
+ * refreshing the cookie too, it would expire at a fixed 45 minutes from first visit regardless
+ * of activity — silently breaking the "inactivity" framing (an active user's browser would just
+ * stop sending the cookie) while the Redis data underneath kept correctly sliding.
+ */
 export async function writeGuestSession(id: string, session: GuestSession): Promise<void> {
-  await getRedis().set(sessionKey(id), session, { ex: GUEST_SESSION_TTL_SECONDS });
+  await Promise.all([getRedis().set(sessionKey(id), session, { ex: GUEST_SESSION_TTL_SECONDS }), setGuestCookie(id)]);
 }
 
 export async function deleteGuestSession(id: string): Promise<void> {
   await getRedis().del(sessionKey(id));
+}
+
+/** Seconds until the guest session expires from inactivity; 0 if it doesn't exist. */
+export async function getGuestSessionTtlSeconds(id: string): Promise<number> {
+  const ttl = await getRedis().ttl(sessionKey(id));
+  return ttl > 0 ? ttl : 0;
+}
+
+/** Re-writes the session unchanged, sliding both the Redis TTL and the cookie together. */
+export async function refreshGuestSession(id: string): Promise<GuestSession | null> {
+  const session = await readGuestSession(id);
+  if (!session) return null;
+  await writeGuestSession(id, session);
+  return session;
 }
 
 export async function getOrInitGuestSession(): Promise<{ id: string; session: GuestSession }> {
