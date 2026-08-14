@@ -31,6 +31,14 @@ export async function validateBoilerplate(
   onPhase?: (phase: "install" | "build") => void
 ): Promise<ValidationResult> {
   const dir = await mkdtemp(path.join(tmpdir(), "wtd-validate-"));
+  // On Vercel's serverless filesystem, $HOME points at a directory that doesn't actually
+  // exist (only /tmp is writable there), so npm's default ~/.npm cache/config resolution
+  // fails with ENOENT before it can even reach the network. Pointing HOME/npm's cache at a
+  // directory we just created under the OS temp dir sidesteps that without touching the
+  // parent process's real environment.
+  const fakeHome = path.join(dir, ".home");
+  await mkdir(fakeHome, { recursive: true });
+  const npmEnv = { ...process.env, HOME: fakeHome, npm_config_cache: path.join(fakeHome, ".npm-cache") };
   const log: string[] = [];
 
   try {
@@ -42,7 +50,7 @@ export async function validateBoilerplate(
 
     onPhase?.("install");
     log.push(`$ npm install (in ${dir})`);
-    const install = await runCommand("npm", ["install", "--no-audit", "--no-fund"], dir, INSTALL_TIMEOUT_MS);
+    const install = await runCommand("npm", ["install", "--no-audit", "--no-fund"], dir, INSTALL_TIMEOUT_MS, npmEnv);
     log.push(install.stdout, install.stderr);
     if (install.code !== 0) {
       return { passed: false, log: log.join("\n") };
@@ -50,7 +58,7 @@ export async function validateBoilerplate(
 
     onPhase?.("build");
     log.push("$ npm run build");
-    const build = await runCommand("npm", ["run", "build"], dir, BUILD_TIMEOUT_MS);
+    const build = await runCommand("npm", ["run", "build"], dir, BUILD_TIMEOUT_MS, npmEnv);
     log.push(build.stdout, build.stderr);
 
     return { passed: build.code === 0, log: log.join("\n") };
@@ -65,7 +73,13 @@ interface CommandResult {
   stderr: string;
 }
 
-function runCommand(command: string, args: string[], cwd: string, timeoutMs: number): Promise<CommandResult> {
+function runCommand(
+  command: string,
+  args: string[],
+  cwd: string,
+  timeoutMs: number,
+  env: NodeJS.ProcessEnv
+): Promise<CommandResult> {
   return new Promise((resolve) => {
     // shell:true is required on Windows: .cmd files (npm) aren't real Win32 executables and
     // can't be spawned via execFile without a shell to interpret them — confirmed live that
@@ -75,7 +89,7 @@ function runCommand(command: string, args: string[], cwd: string, timeoutMs: num
     execFile(
       command,
       args,
-      { cwd, timeout: timeoutMs, shell: process.platform === "win32", maxBuffer: 20 * 1024 * 1024 },
+      { cwd, env, timeout: timeoutMs, shell: process.platform === "win32", maxBuffer: 20 * 1024 * 1024 },
       (error, stdout, stderr) => {
         const code = error ? (typeof error.code === "number" ? error.code : 1) : 0;
         resolve({ code, stdout, stderr });
