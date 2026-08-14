@@ -2,25 +2,49 @@ import { getRedis } from "@/lib/redis";
 
 const WINDOW_SECONDS = 24 * 60 * 60;
 
+export type UserTier = "guest" | "signedIn";
+
 /**
- * Conservative v1 defaults. Real numbers are TBD pending the pricing model
- * (PRD §10, open question) — the mechanism ships now, the numbers get tuned later.
+ * v1 concrete caps (PRD §10's "pricing model TBD" is now resolved to these initial
+ * numbers, tunable later). Boilerplate is capped tightest for guests specifically: it's
+ * the most expensive stage (LLM code-gen + a real npm install + build check) and, per
+ * live testing, the one most likely to fail outright when only the weak fallback model
+ * is available — see the fail-fast check in /api/boilerplate/generate.
+ *
+ * `signedIn` limits are wired up here even though no signed-in system exists yet (Slice
+ * 7): every call site today only ever has a guest session and passes no tier, defaulting
+ * to "guest" — Slice 7 only needs to pass tier="signedIn" for authenticated requests, no
+ * redesign of this module.
  */
-const GUEST_STAGE_LIMITS: Record<string, number> = {
-  prd: 10,
-  stack: 10,
-  boilerplate: 5,
+const GENERATION_LIMITS: Record<UserTier, Record<string, number>> = {
+  guest: {
+    prd: 5,
+    ideas: 5,
+    stack: 10,
+    boilerplate: 1,
+  },
+  signedIn: {
+    prd: 10,
+    ideas: 10,
+    stack: 10,
+    boilerplate: 5,
+  },
 };
 
 export class RateLimitExceededError extends Error {
-  constructor(stage: string, limit: number) {
-    super(`Generation cap reached for "${stage}" (limit: ${limit} per 24h). Sign up for a higher limit.`);
+  constructor(stage: string, limit: number, tier: UserTier) {
+    const upgradeHint = tier === "guest" ? " Sign up for a higher limit." : "";
+    super(`Generation cap reached for "${stage}" (limit: ${limit} per 24h).${upgradeHint}`);
     this.name = "RateLimitExceededError";
   }
 }
 
-export async function enforceGuestGenerationCap(sessionId: string, stage: string): Promise<void> {
-  const limit = GUEST_STAGE_LIMITS[stage];
+export async function enforceGenerationCap(
+  sessionId: string,
+  stage: string,
+  tier: UserTier = "guest"
+): Promise<void> {
+  const limit = GENERATION_LIMITS[tier][stage];
   if (!limit) return;
 
   const key = `guest:${sessionId}:genCount:${stage}`;
@@ -29,6 +53,6 @@ export async function enforceGuestGenerationCap(sessionId: string, stage: string
     await getRedis().expire(key, WINDOW_SECONDS);
   }
   if (count > limit) {
-    throw new RateLimitExceededError(stage, limit);
+    throw new RateLimitExceededError(stage, limit, tier);
   }
 }

@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import { getGroq } from "@/lib/groq";
+import { markModelExhausted, parseGroqRetryAfterSeconds } from "@/lib/llm/modelAvailability";
 
 interface ToolDef {
   type: "function";
@@ -66,14 +67,21 @@ export async function callGroqTool<T>(params: {
       }
       lastError = new Error(`Groq returned no tool call for ${params.tool.function.name}`);
     } catch (err) {
-      if (isRateLimitError(err) && params.fallbackModel && !switchedToFallback) {
-        console.warn(
-          `[groq] ${params.tool.function.name}: ${currentModel} is rate-limited, switching to fallback model ${params.fallbackModel}`
+      if (isRateLimitError(err)) {
+        void markModelExhausted(
+          currentModel,
+          parseGroqRetryAfterSeconds((err as { headers?: unknown })?.headers)
         );
-        currentModel = params.fallbackModel;
-        switchedToFallback = true;
-        lastError = err;
-        continue;
+
+        if (params.fallbackModel && !switchedToFallback) {
+          console.warn(
+            `[groq] ${params.tool.function.name}: ${currentModel} is rate-limited, switching to fallback model ${params.fallbackModel}`
+          );
+          currentModel = params.fallbackModel;
+          switchedToFallback = true;
+          lastError = err;
+          continue;
+        }
       }
 
       const recovered = recoverFromFailedGeneration(err, params.tool.function.name, params.schema);

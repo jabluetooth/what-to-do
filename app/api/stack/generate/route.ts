@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getOrInitGuestSession, writeGuestSession } from "@/lib/redis/guestSession";
-import { enforceGuestGenerationCap, RateLimitExceededError } from "@/lib/redis/rateLimit";
+import { enforceGenerationCap, RateLimitExceededError } from "@/lib/redis/rateLimit";
 import { pickStack } from "@/lib/pipeline/stackMatrix";
 import { generateStackRationale } from "@/lib/llm/stack";
 import { markBoilerplateStaleIfPresent } from "@/lib/pipeline/staleness";
@@ -14,7 +14,7 @@ export async function POST() {
   }
 
   try {
-    await enforceGuestGenerationCap(sessionId, "stack");
+    await enforceGenerationCap(sessionId, "stack");
   } catch (err) {
     if (err instanceof RateLimitExceededError) {
       return NextResponse.json({ error: err.message }, { status: 429 });

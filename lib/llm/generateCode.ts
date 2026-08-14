@@ -1,4 +1,5 @@
 import { getGroq } from "@/lib/groq";
+import { markModelExhausted, parseGroqRetryAfterSeconds } from "@/lib/llm/modelAvailability";
 
 const MAX_ATTEMPTS = 2;
 const FENCE_RE = /```(?:[a-zA-Z]*)\n?([\s\S]*?)```/;
@@ -50,13 +51,20 @@ export async function generateCodeFile(params: {
       console.warn(`[groq] generateCodeFile attempt ${attempt} (${currentModel}) returned no content`);
       lastError = new Error("No code content returned");
     } catch (err) {
-      if (isRateLimitError(err) && params.fallbackModel && !switchedToFallback) {
-        console.warn(
-          `[groq] generateCodeFile: ${currentModel} is rate-limited, switching to fallback model ${params.fallbackModel}`
+      if (isRateLimitError(err)) {
+        void markModelExhausted(
+          currentModel,
+          parseGroqRetryAfterSeconds((err as { headers?: unknown })?.headers)
         );
-        currentModel = params.fallbackModel;
-        switchedToFallback = true;
-        continue;
+
+        if (params.fallbackModel && !switchedToFallback) {
+          console.warn(
+            `[groq] generateCodeFile: ${currentModel} is rate-limited, switching to fallback model ${params.fallbackModel}`
+          );
+          currentModel = params.fallbackModel;
+          switchedToFallback = true;
+          continue;
+        }
       }
       console.warn(`[groq] generateCodeFile attempt ${attempt} (${currentModel}) failed:`, err);
       lastError = err;

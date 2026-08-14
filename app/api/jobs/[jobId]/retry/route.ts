@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getOrCreateGuestSessionId } from "@/lib/redis/guestSession";
 import { getJob, updateJob } from "@/lib/pipeline/jobs";
 import { enqueueBoilerplateJob } from "@/lib/pipeline/enqueue";
+import { isModelExhausted } from "@/lib/llm/modelAvailability";
+import { MODEL_QUALITY } from "@/lib/groq";
 
 /**
  * Domain-level retry, distinct from QStash's own transport-level delivery retries: this is for
@@ -19,6 +21,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
   }
   if (job.state !== "failed") {
     return NextResponse.json({ error: "Only failed jobs can be retried." }, { status: 409 });
+  }
+
+  if (job.stage === "boilerplate" && (await isModelExhausted(MODEL_QUALITY))) {
+    return NextResponse.json(
+      { error: "Boilerplate generation is at capacity right now. Please try again in a few minutes." },
+      { status: 503 }
+    );
   }
 
   await updateJob(jobId, {

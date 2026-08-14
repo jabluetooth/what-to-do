@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getOrInitGuestSession, writeGuestSession } from "@/lib/redis/guestSession";
+import { enforceGenerationCap, RateLimitExceededError } from "@/lib/redis/rateLimit";
 import { checkVagueness } from "@/lib/llm/vagueness";
 import { generatePrd } from "@/lib/llm/prd";
 
@@ -16,6 +17,15 @@ export async function POST(request: Request) {
 
   if (!session.pendingClarification || !session.prompt) {
     return NextResponse.json({ error: "No pending clarification for this session." }, { status: 409 });
+  }
+
+  try {
+    await enforceGenerationCap(sessionId, "prd");
+  } catch (err) {
+    if (err instanceof RateLimitExceededError) {
+      return NextResponse.json({ error: err.message }, { status: 429 });
+    }
+    throw err;
   }
 
   const question = session.pendingClarification.question;
