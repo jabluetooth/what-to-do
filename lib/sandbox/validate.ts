@@ -35,7 +35,7 @@ const INHERITED_ENV_KEYS = [
   "USERPROFILE",
 ];
 
-function buildChildEnv(fakeHome: string): NodeJS.ProcessEnv {
+function buildChildEnv(fakeHome: string, npmCacheDir: string): NodeJS.ProcessEnv {
   // NODE_ENV is non-optional on NodeJS.ProcessEnv's type (Next.js's own ambient declaration) —
   // `next build` forces production mode internally regardless, so this doesn't change behavior.
   const env: NodeJS.ProcessEnv = { NODE_ENV: process.env.NODE_ENV };
@@ -45,8 +45,35 @@ function buildChildEnv(fakeHome: string): NodeJS.ProcessEnv {
     if (value !== undefined) env[key] = value;
   }
   env.HOME = fakeHome;
-  env.npm_config_cache = path.join(fakeHome, ".npm-cache");
+  env.npm_config_cache = npmCacheDir;
   return env;
+}
+
+/**
+ * Deliberately NOT inside the per-job tmpdir, and never deleted here: every job installs the
+ * exact same template dependencies (package.json is static, never LLM-filled — see template.ts),
+ * so on a warm container this lets a second job reuse tarballs the first one already downloaded
+ * instead of re-fetching the whole tree from scratch. That matters on platforms with a small,
+ * fixed /tmp quota (e.g. Vercel Hobby's 512MB): a cache dir that used to be recreated and thrown
+ * away per job meant every single job paid the full download+unpack cost, which is the main
+ * thing that pushes a small-quota /tmp into ENOSPC. Safe to share: content is registry tarballs
+ * for fixed, non-LLM-controlled package names/versions, not attacker-influenced.
+ */
+const SHARED_NPM_CACHE_DIR = path.join(tmpdir(), "wtd-validate-npm-cache");
+
+/** Dev-only tooling the shipped template lists for the user's own later `db:push`, not needed to prove `next build` succeeds — dropping it from the validate-only install trims real peak disk usage without changing what actually ships. */
+const VALIDATE_ONLY_STRIP_DEV_DEPS = ["drizzle-kit"];
+
+function stripValidateOnlyDeps(packageJsonContent: string): string {
+  try {
+    const pkg = JSON.parse(packageJsonContent);
+    if (pkg.devDependencies) {
+      for (const dep of VALIDATE_ONLY_STRIP_DEV_DEPS) delete pkg.devDependencies[dep];
+    }
+    return JSON.stringify(pkg, null, 2);
+  } catch {
+    return packageJsonContent;
+  }
 }
 
 /**
@@ -66,7 +93,7 @@ function buildChildEnv(fakeHome: string): NodeJS.ProcessEnv {
  */
 export async function validateBoilerplate(
   files: TemplateFile[],
-  onPhase?: (phase: "install" | "build") => void
+  onPhase?: (phase: "install" | "build") => void | Promise<void>
 ): Promise<ValidationResult> {
   const dir = await mkdtemp(path.join(tmpdir(), "wtd-validate-"));
   // On Vercel's serverless filesystem, $HOME points at a directory that doesn't actually
@@ -76,17 +103,19 @@ export async function validateBoilerplate(
   // parent process's real environment.
   const fakeHome = path.join(dir, ".home");
   await mkdir(fakeHome, { recursive: true });
-  const npmEnv = buildChildEnv(fakeHome);
+  await mkdir(SHARED_NPM_CACHE_DIR, { recursive: true });
+  const npmEnv = buildChildEnv(fakeHome, SHARED_NPM_CACHE_DIR);
   const log: string[] = [];
 
   try {
     for (const file of files) {
       const filePath = path.join(dir, ...file.path.split("/"));
       await mkdir(path.dirname(filePath), { recursive: true });
-      await writeFile(filePath, file.content, "utf8");
+      const content = file.path === "package.json" ? stripValidateOnlyDeps(file.content) : file.content;
+      await writeFile(filePath, content, "utf8");
     }
 
-    onPhase?.("install");
+    await onPhase?.("install");
     log.push(`$ npm install (in ${dir})`);
     const install = await runCommand(
       "npm",
@@ -97,17 +126,37 @@ export async function validateBoilerplate(
     );
     log.push(install.stdout, install.stderr);
     if (install.code !== 0) {
+      noteIfDiskFull(log, install.stdout, install.stderr);
       return { passed: false, log: log.join("\n") };
     }
 
-    onPhase?.("build");
+    await onPhase?.("build");
     log.push("$ npm run build");
     const build = await runCommand("npm", ["run", "build"], dir, BUILD_TIMEOUT_MS, npmEnv);
     log.push(build.stdout, build.stderr);
+    if (build.code !== 0) {
+      noteIfDiskFull(log, build.stdout, build.stderr);
+    }
 
     return { passed: build.code === 0, log: log.join("\n") };
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * ENOSPC here means the platform's ephemeral disk quota (e.g. Vercel Hobby's fixed 512MB
+ * /tmp) filled up mid-install/build — a real limitation of this interim local-subprocess
+ * validator (see its module doc comment), not a problem with the generated code. Surfacing
+ * it distinctly in the log means a failed job doesn't get misread as bad LLM output.
+ */
+function noteIfDiskFull(log: string[], stdout: string, stderr: string): void {
+  if (stdout.includes("ENOSPC") || stderr.includes("ENOSPC")) {
+    log.push(
+      "\nNOTE: this failure was \"no space left on device\" (ENOSPC), not a code generation " +
+        "problem — the sandbox validator ran out of local disk quota (common on free-tier " +
+        "serverless /tmp limits). Retrying may succeed on a fresh container."
+    );
   }
 }
 

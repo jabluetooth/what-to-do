@@ -1,14 +1,8 @@
 import { getGroq } from "@/lib/groq";
-import { markModelExhausted, parseGroqRetryAfterSeconds } from "@/lib/llm/modelAvailability";
+import { markModelExhausted, parseGroqRetryAfterSeconds, isRateLimitError } from "@/lib/llm/modelAvailability";
 
 const MAX_ATTEMPTS = 2;
 const FENCE_RE = /```(?:[a-zA-Z]*)\n?([\s\S]*?)```/;
-
-function isRateLimitError(err: unknown): boolean {
-  const status = (err as { status?: number })?.status;
-  const code = (err as { error?: { error?: { code?: string } } })?.error?.error?.code;
-  return status === 429 || code === "rate_limit_exceeded";
-}
 
 /**
  * For a single code file's content, this deliberately avoids tool-calling / JSON-embedding

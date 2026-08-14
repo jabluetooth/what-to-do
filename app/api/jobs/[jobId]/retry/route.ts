@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getOrCreateGuestSessionId } from "@/lib/redis/guestSession";
-import { getJob, updateJob } from "@/lib/pipeline/jobs";
+import { getJob, updateJob, claimJobRetry } from "@/lib/pipeline/jobs";
 import { enqueueBoilerplateJob } from "@/lib/pipeline/enqueue";
 import { isModelExhausted } from "@/lib/llm/modelAvailability";
 import { MODEL_QUALITY } from "@/lib/groq";
@@ -21,6 +21,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
   }
   if (job.state !== "failed") {
     return NextResponse.json({ error: "Only failed jobs can be retried." }, { status: 409 });
+  }
+
+  // Dedups a double-click or a retried client request racing itself: without this, two
+  // requests can both pass the state check above before either write below lands, producing
+  // two QStash publishes for the same job.
+  if (!(await claimJobRetry(jobId))) {
+    return NextResponse.json({ error: "A retry is already in progress for this job." }, { status: 409 });
   }
 
   if (job.stage === "boilerplate" && (await isModelExhausted(MODEL_QUALITY))) {

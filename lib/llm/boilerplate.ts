@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MODEL_QUALITY, MODEL_FAST } from "@/lib/groq";
+import { MODEL_QUALITY } from "@/lib/groq";
 import { callGroqTool } from "@/lib/llm/callTool";
 import { generateCodeFile } from "@/lib/llm/generateCode";
 import type { PrdSection } from "@/lib/types";
@@ -52,7 +52,6 @@ function baseContext(prompt: string, sections: PrdSection[]): string {
 async function pickResourceName(input: { prompt: string; sections: PrdSection[] }): Promise<string> {
   const { mainResourceName } = await callGroqTool({
     model: MODEL_QUALITY,
-    fallbackModel: MODEL_FAST,
     maxTokens: 100,
     tool: RESOURCE_NAME_TOOL,
     userContent: `${baseContext(input.prompt, input.sections)}\n\nPick the one core data entity this app most revolves around (not every feature — just this slice) and name it.`,
@@ -84,7 +83,6 @@ export const trails = pgTable("trails", {
 
   return generateCodeFile({
     model: MODEL_QUALITY,
-    fallbackModel: MODEL_FAST,
     maxTokens: 700,
     instructions: `${baseContext(input.prompt, input.sections)}\n\nWrite lib/db/schema.ts for a Drizzle table named "${input.mainResourceName}", following this exact pattern (adapt columns/tables to the app, keep the same import style — every column helper used must be imported from 'drizzle-orm/pg-core'). If the app needs a relationship between two tables, use \`.references(() => otherTable.column)\` directly on the referencing column exactly as shown below — do not import or use \`relationship\`, \`foreignKey\`, \`belongsTo\`, \`many\`, or any other helper name; those do not exist in this API:\n\n${example}`,
   });
@@ -107,22 +105,24 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const [created] = await db.insert(trails).values(body).returning();
+  const { name, description, rating, categoryId } = body;
+  const [created] = await db
+    .insert(trails)
+    .values({ name, description, rating, categoryId })
+    .returning();
   return NextResponse.json(created, { status: 201 });
 }`;
 
   return generateCodeFile({
     model: MODEL_QUALITY,
-    fallbackModel: MODEL_FAST,
     maxTokens: 600,
-    instructions: `${baseContext(input.prompt, input.sections)}\n\nThis is the schema already defined in lib/db/schema.ts:\n\n${input.schemaFileContent}\n\nWrite app/api/${input.mainResourceName}/route.ts with GET (list) and POST (create) handlers, following this exact pattern — request is a plain positional parameter, never destructured from an object, and the table is referenced by its actual imported binding (e.g. \`.from(trails)\`), never as a string like \`.from('trails')\`:\n\n${example}`,
+    instructions: `${baseContext(input.prompt, input.sections)}\n\nThis is the schema already defined in lib/db/schema.ts:\n\n${input.schemaFileContent}\n\nWrite app/api/${input.mainResourceName}/route.ts with GET (list) and POST (create) handlers, following this exact pattern — request is a plain positional parameter, never destructured from an object, and the table is referenced by its actual imported binding (e.g. \`.from(trails)\`), never as a string like \`.from('trails')\`. Critically, POST must NEVER pass the raw parsed body straight into \`.values(...)\`: destructure only the specific writable columns your schema actually defines (skip \`id\`, \`createdAt\`, and any other auto-generated/computed column) into a plain object first, exactly as shown, so a caller can't inject values for columns that don't belong in a create request:\n\n${example}`,
   });
 }
 
 async function generateHomePage(input: { prompt: string; sections: PrdSection[] }): Promise<string> {
   return generateCodeFile({
     model: MODEL_QUALITY,
-    fallbackModel: MODEL_FAST,
     maxTokens: 600,
     instructions: `${baseContext(input.prompt, input.sections)}\n\nWrite app/page.tsx as a real React Server Component (default export, no props) with static, app-specific content — a hero section and a short feature summary reflecting this exact app idea, not generic placeholder text. Do not import or call the database.`,
   });
@@ -136,6 +136,13 @@ async function generateHomePage(input: { prompt: string; sections: PrdSection[] 
  * schema as context so they agree with each other (same table binding, same columns). Schema
  * and homepage don't depend on each other and run in parallel; the route call needs the
  * schema's content first.
+ *
+ * None of the four calls below pass a fallbackModel (PRD §7): boilerplate generation is the
+ * one stage required to fail fast on rate-limit rather than transparently degrade to the
+ * weaker model mid-job, which has proven unreliable enough at code generation that finishing
+ * a job on it just wastes a full install+build cycle. The pre-flight isModelExhausted check in
+ * the route handler catches the common case; this is what makes a mid-job 429 actually fail
+ * instead of silently continuing on a worse model.
  */
 export async function generateBoilerplateFillIn(input: {
   prompt: string;

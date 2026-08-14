@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getOrInitGuestSession, writeGuestSession } from "@/lib/redis/guestSession";
 import { enforceGenerationCap, RateLimitExceededError } from "@/lib/redis/rateLimit";
+import { moderateInput } from "@/lib/llm/moderation";
 import { checkVagueness } from "@/lib/llm/vagueness";
 import { generatePrd } from "@/lib/llm/prd";
 
@@ -30,6 +31,16 @@ export async function POST(request: Request) {
 
   const question = session.pendingClarification.question;
   const answer = parsed.data.answer;
+
+  // Clarification answers are free text same as the initial prompt (PRD §7) — the vagueness
+  // recheck below only judges specificity, not safety, so this must run independently.
+  const moderation = await moderateInput(answer);
+  if (moderation.verdict === "block") {
+    return NextResponse.json(
+      { error: "This prompt can't be processed.", reason: moderation.reason },
+      { status: 400 }
+    );
+  }
 
   // Only one clarifying round happens (PRD §6.1): if the follow-up is still thin, proceed
   // with best-effort generation and flag it low-confidence rather than asking again.

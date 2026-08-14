@@ -24,6 +24,42 @@ function jobKey(jobId: string): string {
   return `job:${jobId}`;
 }
 
+function runLockKey(jobId: string): string {
+  return `job:${jobId}:run-lock`;
+}
+
+function retryLockKey(jobId: string): string {
+  return `job:${jobId}:retry-lock`;
+}
+
+/**
+ * QStash delivers at least once, and run-stage responds before the worker finishes — without
+ * this, a redelivery (network blip, retry policy) runs the same job concurrently: two LLM
+ * fill-ins, two install+build cycles, two unordered writes to the same job/R2 state. TTL is a
+ * safety net for a crashed/timed-out attempt only; a normal run always releases the lock itself
+ * in a finally block, so a legitimate retry (job re-queued as "pending") isn't blocked by it.
+ */
+const RUN_LOCK_TTL_SECONDS = 600;
+
+export async function claimJobRun(jobId: string): Promise<boolean> {
+  const result = await getRedis().set(runLockKey(jobId), "1", { nx: true, ex: RUN_LOCK_TTL_SECONDS });
+  return result === "OK";
+}
+
+export async function releaseJobRun(jobId: string): Promise<void> {
+  await getRedis().del(runLockKey(jobId));
+}
+
+/**
+ * Short dedup window against a double-click or a retried client request racing itself on
+ * POST /retry — without it, two requests can both pass the `state === "failed"` check before
+ * either write lands, producing two QStash publishes for one job.
+ */
+export async function claimJobRetry(jobId: string): Promise<boolean> {
+  const result = await getRedis().set(retryLockKey(jobId), "1", { nx: true, ex: 10 });
+  return result === "OK";
+}
+
 export async function createJob(sessionId: string, stage: "boilerplate"): Promise<JobRecord> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();

@@ -320,6 +320,7 @@ export default function Home() {
       }
       setState((prev) => (prev.phase === "result" ? { ...prev, sections: data.sections } : prev));
       if (stack && data.stackStale) setStackStale(true);
+      if (boilerplateJobState === "succeeded" && data.boilerplateStale) setBoilerplateStale(true);
       setEditingKey(null);
     } catch {
       setSectionError("Network error — please try again.");
@@ -344,6 +345,7 @@ export default function Home() {
       }
       setState((prev) => (prev.phase === "result" ? { ...prev, sections: data.sections } : prev));
       if (stack && data.stackStale) setStackStale(true);
+      if (boilerplateJobState === "succeeded" && data.boilerplateStale) setBoilerplateStale(true);
     } catch {
       setSectionError("Network error — please try again.");
     } finally {

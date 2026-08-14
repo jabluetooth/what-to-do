@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getOrInitGuestSession, writeGuestSession } from "@/lib/redis/guestSession";
 import { PRD_SECTION_DEFS } from "@/lib/llm/prd";
 import { replaceSection } from "@/lib/pipeline/prdSections";
-import { markStackStaleIfPresent } from "@/lib/pipeline/staleness";
+import { markStackStaleIfPresent, markBoilerplateStaleIfPresent } from "@/lib/pipeline/staleness";
 
 const SECTION_KEYS = PRD_SECTION_DEFS.map((s) => s.key) as [string, ...string[]];
 
@@ -24,9 +24,16 @@ export async function POST(request: Request) {
   }
 
   session.prdSections = replaceSection(session.prdSections, parsed.data.sectionKey, parsed.data.content);
+  // A PRD edit invalidates the boilerplate directly — it's generated from prdSections, not from
+  // the stack — so this can't rely solely on the stack-change cascade below to reach it.
   markStackStaleIfPresent(session);
+  markBoilerplateStaleIfPresent(session);
   session.updatedAt = new Date().toISOString();
   await writeGuestSession(sessionId, session);
 
-  return NextResponse.json({ sections: session.prdSections, stackStale: session.stackStale ?? false });
+  return NextResponse.json({
+    sections: session.prdSections,
+    stackStale: session.stackStale ?? false,
+    boilerplateStale: session.boilerplateStale ?? false,
+  });
 }

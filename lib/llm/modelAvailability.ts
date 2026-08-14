@@ -24,6 +24,12 @@ export async function isModelExhausted(model: string): Promise<boolean> {
   return value !== null;
 }
 
+export function isRateLimitError(err: unknown): boolean {
+  const status = (err as { status?: number })?.status;
+  const code = (err as { error?: { error?: { code?: string } } })?.error?.error?.code;
+  return status === 429 || code === "rate_limit_exceeded";
+}
+
 /** Reads Groq's x-ratelimit-reset-{tokens,requests} headers (format e.g. "17.89s", "6m42.624s"). */
 export function parseGroqRetryAfterSeconds(headers: unknown): number | undefined {
   const get = (headers as { get?: (name: string) => string | null } | undefined)?.get;

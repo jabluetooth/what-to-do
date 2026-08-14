@@ -56,8 +56,8 @@ export async function writeProjectZip(prefix: string, zipBuffer: Buffer): Promis
   );
 }
 
-/** Reads every individual file back under a prefix (excluding the zip) — used for the live-preview file tree. */
-export async function listProjectFiles(prefix: string): Promise<FlatFile[]> {
+/** Lists every object key under a prefix, following pagination to completion. */
+async function listAllKeys(prefix: string): Promise<string[]> {
   const r2 = getR2();
   const bucket = getR2Bucket();
 
@@ -65,13 +65,24 @@ export async function listProjectFiles(prefix: string): Promise<FlatFile[]> {
   let continuationToken: string | undefined;
   do {
     const page = await r2.send(
-      new ListObjectsV2Command({ Bucket: bucket, Prefix: `${prefix}/`, ContinuationToken: continuationToken })
+      new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: continuationToken })
     );
     for (const obj of page.Contents ?? []) {
-      if (obj.Key && obj.Key !== `${prefix}/archive.zip`) keys.push(obj.Key);
+      if (obj.Key) keys.push(obj.Key);
     }
     continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
   } while (continuationToken);
+
+  return keys;
+}
+
+/** Reads every individual file back under a prefix (excluding the zip) — used for the live-preview file tree. */
+export async function listProjectFiles(prefix: string): Promise<FlatFile[]> {
+  const r2 = getR2();
+  const bucket = getR2Bucket();
+
+  const zipKey = `${prefix}/archive.zip`;
+  const keys = (await listAllKeys(`${prefix}/`)).filter((key) => key !== zipKey);
 
   return Promise.all(
     keys.map(async (key) => {
@@ -87,18 +98,7 @@ export async function deleteProjectFiles(prefix: string): Promise<void> {
   const r2 = getR2();
   const bucket = getR2Bucket();
 
-  const keys: string[] = [];
-  let continuationToken: string | undefined;
-  do {
-    const page = await r2.send(
-      new ListObjectsV2Command({ Bucket: bucket, Prefix: `${prefix}/`, ContinuationToken: continuationToken })
-    );
-    for (const obj of page.Contents ?? []) {
-      if (obj.Key) keys.push(obj.Key);
-    }
-    continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
-  } while (continuationToken);
-
+  const keys = await listAllKeys(`${prefix}/`);
   if (keys.length === 0) return;
 
   await r2.send(
@@ -117,17 +117,7 @@ export async function copyProjectFiles(sourcePrefix: string, destPrefix: string)
   const r2 = getR2();
   const bucket = getR2Bucket();
 
-  const keys: string[] = [];
-  let continuationToken: string | undefined;
-  do {
-    const page = await r2.send(
-      new ListObjectsV2Command({ Bucket: bucket, Prefix: `${sourcePrefix}/`, ContinuationToken: continuationToken })
-    );
-    for (const obj of page.Contents ?? []) {
-      if (obj.Key) keys.push(obj.Key);
-    }
-    continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
-  } while (continuationToken);
+  const keys = await listAllKeys(`${sourcePrefix}/`);
 
   await Promise.all(
     keys.map((key) => {

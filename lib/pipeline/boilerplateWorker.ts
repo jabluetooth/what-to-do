@@ -1,4 +1,4 @@
-import { getJob, updateJob } from "@/lib/pipeline/jobs";
+import { getJob, updateJob, claimJobRun, releaseJobRun } from "@/lib/pipeline/jobs";
 import { readGuestSession, writeGuestSession } from "@/lib/redis/guestSession";
 import { loadTemplate, type TemplateFile } from "@/lib/pipeline/template";
 import { generateBoilerplateFillIn } from "@/lib/llm/boilerplate";
@@ -34,66 +34,80 @@ function mergeFillIn(
  * so this is required, not optional).
  */
 export async function runBoilerplateJob(jobId: string): Promise<void> {
-  const job = await getJob(jobId);
-  if (!job) return;
-
-  const session = await readGuestSession(job.sessionId);
-  if (!session || !session.prdSections || !session.prompt) {
-    await updateJob(jobId, { state: "failed", progress: 100, error: "Session or PRD missing." });
-    return;
-  }
+  // QStash is at-least-once delivery and run-stage responds before this finishes, so a
+  // redelivery must not be allowed to run the same job a second time concurrently. Losing the
+  // race just means a genuine duplicate delivery — return quietly, the other invocation owns it.
+  const claimed = await claimJobRun(jobId);
+  if (!claimed) return;
 
   try {
-    await updateJob(jobId, { state: "running", progress: 5, message: "Selecting template..." });
-    const templateFiles = await loadTemplate();
+    const job = await getJob(jobId);
+    if (!job) return;
 
-    await updateJob(jobId, { progress: 20, message: "Generating routes & models..." });
-    const fillIn = await generateBoilerplateFillIn({
-      prompt: session.prompt,
-      sections: session.prdSections,
-    });
-
-    await updateJob(jobId, { progress: 45, message: "Generating initial UI..." });
-    const files = mergeFillIn(templateFiles, fillIn);
-
-    await updateJob(jobId, { progress: 60, message: "Writing project files..." });
-    const prefix = `guest/${job.sessionId}/${jobId}`;
-    const zip = await buildZip(files);
-    await Promise.all([writeProjectFiles(prefix, files), writeProjectZip(prefix, zip)]);
-
-    const validation = await validateBoilerplate(files, (phase) => {
-      if (phase === "install") {
-        void updateJob(jobId, { progress: 75, message: "Installing dependencies..." });
-      } else {
-        void updateJob(jobId, { progress: 90, message: "Running build check..." });
-      }
-    });
-
-    if (!validation.passed) {
-      await updateJob(jobId, {
-        state: "failed",
-        progress: 100,
-        message: "Build validation failed",
-        error: validation.log.slice(-MAX_LOG_CHARS),
-      });
+    const session = await readGuestSession(job.sessionId);
+    if (!session || !session.prdSections || !session.prompt) {
+      await updateJob(jobId, { state: "failed", progress: 100, error: "Session or PRD missing." });
       return;
     }
 
-    await updateJob(jobId, { state: "succeeded", progress: 100, message: "Done", resultRef: prefix });
+    try {
+      await updateJob(jobId, { state: "running", progress: 5, message: "Selecting template..." });
+      const templateFiles = await loadTemplate();
 
-    session.boilerplateR2Prefix = prefix;
-    session.boilerplateStale = false;
-    // Always true in v1 — see the field's doc comment in lib/types.ts.
-    session.boilerplateWebContainerCompatible = true;
-    session.currentStage = "boilerplate";
-    session.updatedAt = new Date().toISOString();
-    await writeGuestSession(job.sessionId, session);
-  } catch (err) {
-    await updateJob(jobId, {
-      state: "failed",
-      progress: 100,
-      message: "Generation failed",
-      error: err instanceof Error ? err.message : String(err),
-    });
+      await updateJob(jobId, { progress: 20, message: "Generating routes & models..." });
+      const fillIn = await generateBoilerplateFillIn({
+        prompt: session.prompt,
+        sections: session.prdSections,
+      });
+
+      await updateJob(jobId, { progress: 45, message: "Generating initial UI..." });
+      const files = mergeFillIn(templateFiles, fillIn);
+
+      await updateJob(jobId, { progress: 60, message: "Writing project files..." });
+      const prefix = `guest/${job.sessionId}/${jobId}`;
+      const zip = await buildZip(files);
+      await Promise.all([writeProjectFiles(prefix, files), writeProjectZip(prefix, zip)]);
+
+      // Awaited (not fire-and-forget): updateJob is a plain read-modify-write, so an in-flight
+      // progress write racing the final state write below could land last and silently revert
+      // a completed job back to "running" forever. Awaiting keeps every write to this job
+      // strictly ordered.
+      const validation = await validateBoilerplate(files, async (phase) => {
+        if (phase === "install") {
+          await updateJob(jobId, { progress: 75, message: "Installing dependencies..." });
+        } else {
+          await updateJob(jobId, { progress: 90, message: "Running build check..." });
+        }
+      });
+
+      if (!validation.passed) {
+        await updateJob(jobId, {
+          state: "failed",
+          progress: 100,
+          message: "Build validation failed",
+          error: validation.log.slice(-MAX_LOG_CHARS),
+        });
+        return;
+      }
+
+      await updateJob(jobId, { state: "succeeded", progress: 100, message: "Done", resultRef: prefix });
+
+      session.boilerplateR2Prefix = prefix;
+      session.boilerplateStale = false;
+      // Always true in v1 — see the field's doc comment in lib/types.ts.
+      session.boilerplateWebContainerCompatible = true;
+      session.currentStage = "boilerplate";
+      session.updatedAt = new Date().toISOString();
+      await writeGuestSession(job.sessionId, session);
+    } catch (err) {
+      await updateJob(jobId, {
+        state: "failed",
+        progress: 100,
+        message: "Generation failed",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  } finally {
+    await releaseJobRun(jobId);
   }
 }

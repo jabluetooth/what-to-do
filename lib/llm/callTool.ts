@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import { getGroq } from "@/lib/groq";
-import { markModelExhausted, parseGroqRetryAfterSeconds } from "@/lib/llm/modelAvailability";
+import { markModelExhausted, parseGroqRetryAfterSeconds, isRateLimitError } from "@/lib/llm/modelAvailability";
 
 interface ToolDef {
   type: "function";
@@ -97,12 +97,6 @@ export async function callGroqTool<T>(params: {
   }
 
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
-}
-
-function isRateLimitError(err: unknown): boolean {
-  const status = (err as { status?: number })?.status;
-  const code = (err as { error?: { error?: { code?: string } } })?.error?.error?.code;
-  return status === 429 || code === "rate_limit_exceeded";
 }
 
 function recoverFromFailedGeneration<T>(err: unknown, toolName: string, schema: z.ZodType<T>): T | null {
