@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MODEL_QUALITY } from "@/lib/groq";
+import { MODEL_QUALITY, MODEL_FAST } from "@/lib/groq";
 import { callGroqTool } from "@/lib/llm/callTool";
 import type { PrdSection, PromptHints } from "@/lib/types";
 
@@ -79,6 +79,7 @@ export async function generatePrd(input: GeneratePrdInput): Promise<GeneratePrdR
 
   const raw = await callGroqTool({
     model: MODEL_QUALITY,
+    fallbackModel: MODEL_FAST,
     maxTokens: 2000,
     tool: PRD_TOOL,
     userContent: `Generate a concise, MVP-scoped PRD for a developer app idea. Write for a solo developer deciding what to build next, not a corporate audience. Keep each section to a few sentences or a short bullet list — this feeds a scaffolding pipeline, not a formal document.\n\n${contextLines.join("\n")}\n\nEmit exactly these sections, in this order: ${PRD_SECTION_DEFS.map((s) => `${s.key} (${s.title})`).join(", ")}.`,
@@ -133,6 +134,7 @@ export async function regeneratePrdSection(input: {
 
   const { content } = await callGroqTool({
     model: MODEL_QUALITY,
+    fallbackModel: MODEL_FAST,
     maxTokens: 800,
     tool: PRD_SECTION_TOOL,
     userContent: `App idea prompt: "${input.prompt}"\n\nRest of the current PRD (context for consistency — do not repeat it back):\n\n${otherSections}\n\nRewrite only the "${def.title}" section.${input.instructions ? ` Developer's guidance: ${input.instructions}` : ""}`,

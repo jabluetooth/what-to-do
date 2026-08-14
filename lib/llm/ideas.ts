@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MODEL_FAST } from "@/lib/groq";
+import { MODEL_FAST, MODEL_QUALITY } from "@/lib/groq";
 import { callGroqTool } from "@/lib/llm/callTool";
 import type { RandomIdea } from "@/lib/types";
 
@@ -37,6 +37,7 @@ export async function generateRandomIdea(avoidTitles: string[]): Promise<RandomI
 
   return callGroqTool({
     model: MODEL_FAST,
+    fallbackModel: MODEL_QUALITY,
     // 200 was too tight: verbose descriptions occasionally got truncated mid-JSON before the
     // closing brace, which is exactly what forces Groq into the tool_use_failed text fallback.
     maxTokens: 400,

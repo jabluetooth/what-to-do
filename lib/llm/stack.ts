@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MODEL_QUALITY } from "@/lib/groq";
+import { MODEL_QUALITY, MODEL_FAST } from "@/lib/groq";
 import { callGroqTool } from "@/lib/llm/callTool";
 import type { PrdSection } from "@/lib/types";
 import type { StackPicks } from "@/lib/pipeline/stackMatrix";
@@ -64,6 +64,7 @@ export async function generateStackRationale(input: {
 
   return callGroqTool({
     model: MODEL_QUALITY,
+    fallbackModel: MODEL_FAST,
     maxTokens: 600,
     tool: STACK_RATIONALE_TOOL,
     userContent: `${context}\n\nWrite a short, specific rationale (1-2 sentences) for each piece — reference something concrete about this app idea, not generic praise for the technology.`,

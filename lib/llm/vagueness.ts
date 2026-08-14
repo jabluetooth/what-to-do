@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MODEL_FAST } from "@/lib/groq";
+import { MODEL_FAST, MODEL_QUALITY } from "@/lib/groq";
 import { callGroqTool } from "@/lib/llm/callTool";
 import type { PromptHints } from "@/lib/types";
 
@@ -43,6 +43,7 @@ export async function checkVagueness(prompt: string, hints?: PromptHints): Promi
   try {
     return await callGroqTool({
       model: MODEL_FAST,
+      fallbackModel: MODEL_QUALITY,
       maxTokens: 200,
       tool: VAGUENESS_TOOL,
       userContent: `App idea prompt: "${prompt}"\nOptional hints: ${JSON.stringify(hints ?? {})}\n\nIs this specific enough to generate a real PRD (problem statement, target user, core features, user stories, out-of-scope, complexity estimate)? Mark vague only if it's too thin to say anything meaningful about who it's for or what it does — not merely short.`,

@@ -3,6 +3,7 @@ import { getOrInitGuestSession, writeGuestSession } from "@/lib/redis/guestSessi
 import { enforceGuestGenerationCap, RateLimitExceededError } from "@/lib/redis/rateLimit";
 import { pickStack } from "@/lib/pipeline/stackMatrix";
 import { generateStackRationale } from "@/lib/llm/stack";
+import { markBoilerplateStaleIfPresent } from "@/lib/pipeline/staleness";
 import type { StackRecommendation } from "@/lib/types";
 
 export async function POST() {
@@ -47,9 +48,10 @@ export async function POST() {
 
   session.stack = stack;
   session.stackStale = false;
+  markBoilerplateStaleIfPresent(session);
   session.currentStage = "stack";
   session.updatedAt = new Date().toISOString();
   await writeGuestSession(sessionId, session);
 
-  return NextResponse.json({ stack });
+  return NextResponse.json({ stack, boilerplateStale: session.boilerplateStale ?? false });
 }

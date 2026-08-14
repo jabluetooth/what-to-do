@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getOrInitGuestSession, writeGuestSession } from "@/lib/redis/guestSession";
+import { markBoilerplateStaleIfPresent } from "@/lib/pipeline/staleness";
 
 const CATEGORIES = ["frontend", "backend", "database", "hosting", "auth"] as const;
 
@@ -25,8 +26,9 @@ export async function POST(request: Request) {
     ...session.stack,
     [category]: { choice, rationale: "Your override — no auto-generated rationale for this pick." },
   };
+  markBoilerplateStaleIfPresent(session);
   session.updatedAt = new Date().toISOString();
   await writeGuestSession(sessionId, session);
 
-  return NextResponse.json({ stack: session.stack });
+  return NextResponse.json({ stack: session.stack, boilerplateStale: session.boilerplateStale ?? false });
 }

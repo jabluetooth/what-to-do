@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Separate sub-project with its own dependency tree — not part of this app's codebase.
+    "templates/**",
   ]),
 ]);
 

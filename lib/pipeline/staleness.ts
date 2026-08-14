@@ -10,3 +10,9 @@ export function markStackStaleIfPresent(session: GuestSession): void {
     session.stackStale = true;
   }
 }
+
+export function markBoilerplateStaleIfPresent(session: GuestSession): void {
+  if (session.boilerplateR2Prefix) {
+    session.boilerplateStale = true;
+  }
+}

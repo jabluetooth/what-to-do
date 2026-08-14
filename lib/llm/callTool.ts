@@ -10,7 +10,7 @@ interface ToolDef {
   };
 }
 
-const MAX_ATTEMPTS = 2;
+const MAX_ATTEMPTS = 3;
 
 /**
  * Groq occasionally emits a forced tool call as literal text
@@ -23,21 +23,30 @@ const MAX_ATTEMPTS = 2;
  * text — is schema-validated, not just JSON.parsed: a syntactically valid
  * but incomplete/malformed object (e.g. a null field) must fail here and
  * trigger a retry, not silently pass through as good data to the caller.
+ *
+ * `fallbackModel`, if given, is tried when the primary model hits a 429 —
+ * Groq's token-per-day limits are tracked per model, not pooled across the
+ * account (confirmed live: the 429 body names the specific model and its own
+ * limit/used counts), so a same-account, same-key model switch is a real
+ * fallback, not just a retry of the same wall.
  */
 export async function callGroqTool<T>(params: {
   model: string;
+  fallbackModel?: string;
   maxTokens: number;
   tool: ToolDef;
   userContent: string;
   schema: z.ZodType<T>;
 }): Promise<T> {
   let lastError: unknown;
+  let currentModel = params.model;
+  let switchedToFallback = false;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       const client = getGroq();
       const response = await client.chat.completions.create({
-        model: params.model,
+        model: currentModel,
         max_tokens: params.maxTokens,
         tools: [params.tool],
         tool_choice: { type: "function", function: { name: params.tool.function.name } },
@@ -49,7 +58,7 @@ export async function callGroqTool<T>(params: {
         const result = params.schema.safeParse(JSON.parse(toolCall.function.arguments));
         if (result.success) return result.data;
         console.warn(
-          `[groq] attempt ${attempt} produced invalid output for ${params.tool.function.name}:`,
+          `[groq] attempt ${attempt} (${currentModel}) produced invalid output for ${params.tool.function.name}:`,
           result.error.message
         );
         lastError = new Error(`Invalid output shape from ${params.tool.function.name}`);
@@ -57,19 +66,35 @@ export async function callGroqTool<T>(params: {
       }
       lastError = new Error(`Groq returned no tool call for ${params.tool.function.name}`);
     } catch (err) {
+      if (isRateLimitError(err) && params.fallbackModel && !switchedToFallback) {
+        console.warn(
+          `[groq] ${params.tool.function.name}: ${currentModel} is rate-limited, switching to fallback model ${params.fallbackModel}`
+        );
+        currentModel = params.fallbackModel;
+        switchedToFallback = true;
+        lastError = err;
+        continue;
+      }
+
       const recovered = recoverFromFailedGeneration(err, params.tool.function.name, params.schema);
       if (recovered) {
         console.warn(
-          `[groq] recovered ${params.tool.function.name} from a tool_use_failed error on attempt ${attempt}`
+          `[groq] recovered ${params.tool.function.name} from a tool_use_failed error on attempt ${attempt} (${currentModel})`
         );
         return recovered;
       }
-      console.warn(`[groq] attempt ${attempt} failed for ${params.tool.function.name}:`, err);
+      console.warn(`[groq] attempt ${attempt} failed for ${params.tool.function.name} (${currentModel}):`, err);
       lastError = err;
     }
   }
 
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+function isRateLimitError(err: unknown): boolean {
+  const status = (err as { status?: number })?.status;
+  const code = (err as { error?: { error?: { code?: string } } })?.error?.error?.code;
+  return status === 429 || code === "rate_limit_exceeded";
 }
 
 function recoverFromFailedGeneration<T>(err: unknown, toolName: string, schema: z.ZodType<T>): T | null {

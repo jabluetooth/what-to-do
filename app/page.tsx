@@ -43,6 +43,15 @@ export default function Home() {
   const [overridingCategory, setOverridingCategory] = useState<StackCategory | null>(null);
   const [overrideChoice, setOverrideChoice] = useState("");
 
+  const [boilerplateJobId, setBoilerplateJobId] = useState<string | null>(null);
+  const [boilerplateJobState, setBoilerplateJobState] = useState<
+    "idle" | "pending" | "running" | "succeeded" | "failed"
+  >("idle");
+  const [boilerplateProgress, setBoilerplateProgress] = useState(0);
+  const [boilerplateMessage, setBoilerplateMessage] = useState("");
+  const [boilerplateError, setBoilerplateError] = useState<string | null>(null);
+  const [boilerplateStale, setBoilerplateStale] = useState(false);
+
   const promptId = useId();
   const platformId = useId();
   const scopeId = useId();
@@ -123,6 +132,12 @@ export default function Home() {
     setStackError(null);
     setOverridingCategory(null);
     setOverrideChoice("");
+    setBoilerplateJobId(null);
+    setBoilerplateJobState("idle");
+    setBoilerplateProgress(0);
+    setBoilerplateMessage("");
+    setBoilerplateError(null);
+    setBoilerplateStale(false);
   }
 
   function startEdit(section: PrdSection) {
@@ -196,6 +211,7 @@ export default function Home() {
       }
       setStack(data.stack);
       setStackStale(false);
+      if (boilerplateJobState === "succeeded" && data.boilerplateStale) setBoilerplateStale(true);
     } catch {
       setStackError("Network error — please try again.");
     } finally {
@@ -231,10 +247,86 @@ export default function Home() {
       }
       setStack(data.stack);
       setOverridingCategory(null);
+      if (boilerplateJobState === "succeeded" && data.boilerplateStale) setBoilerplateStale(true);
     } catch {
       setStackError("Network error — please try again.");
     } finally {
       setStackLoading(false);
+    }
+  }
+
+  function pollBoilerplateJob(jobId: string) {
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/jobs/${jobId}/status`);
+        const data = await res.json();
+
+        if (!res.ok) {
+          setBoilerplateJobState("failed");
+          setBoilerplateError(data.error ?? "Lost track of the job.");
+          return;
+        }
+
+        setBoilerplateProgress(data.progress);
+        setBoilerplateMessage(data.message);
+
+        if (data.state === "succeeded") {
+          setBoilerplateJobState("succeeded");
+          setBoilerplateStale(false);
+          return;
+        }
+        if (data.state === "failed") {
+          setBoilerplateJobState("failed");
+          setBoilerplateError(data.error ?? "Boilerplate generation failed.");
+          return;
+        }
+
+        setBoilerplateJobState(data.state);
+        setTimeout(poll, 1800);
+      } catch {
+        setTimeout(poll, 1800);
+      }
+    };
+    poll();
+  }
+
+  async function generateBoilerplate() {
+    setBoilerplateError(null);
+    setBoilerplateJobState("pending");
+    setBoilerplateProgress(0);
+    setBoilerplateMessage("Queued");
+    try {
+      const res = await fetch("/api/boilerplate/generate", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setBoilerplateJobState("idle");
+        setBoilerplateError(data.error ?? "Couldn't start boilerplate generation. Please try again.");
+        return;
+      }
+      setBoilerplateJobId(data.jobId);
+      pollBoilerplateJob(data.jobId);
+    } catch {
+      setBoilerplateJobState("idle");
+      setBoilerplateError("Network error — please try again.");
+    }
+  }
+
+  async function retryBoilerplate() {
+    if (!boilerplateJobId) return;
+    setBoilerplateError(null);
+    try {
+      const res = await fetch(`/api/jobs/${boilerplateJobId}/retry`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setBoilerplateError(data.error ?? "Couldn't retry. Please try again.");
+        return;
+      }
+      setBoilerplateJobState("pending");
+      setBoilerplateProgress(0);
+      setBoilerplateMessage("Queued");
+      pollBoilerplateJob(boilerplateJobId);
+    } catch {
+      setBoilerplateError("Network error — please try again.");
     }
   }
 
@@ -636,6 +728,89 @@ export default function Home() {
               </div>
             )}
           </div>
+
+          {stack && (
+            <div className="border-t border-neutral-200 dark:border-neutral-800 pt-6">
+              <h2 className="text-xl font-semibold">Boilerplate</h2>
+
+              {boilerplateStale && boilerplateJobState === "succeeded" && (
+                <div className="mt-2 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+                  The stack changed since this boilerplate was generated — it may be out of date.
+                </div>
+              )}
+
+              {boilerplateError && (
+                <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="status" aria-live="polite">
+                  {boilerplateError}
+                </p>
+              )}
+
+              {boilerplateJobState === "idle" && (
+                <button
+                  type="button"
+                  onClick={generateBoilerplate}
+                  className="mt-3 rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium"
+                >
+                  Generate Boilerplate
+                </button>
+              )}
+
+              {(boilerplateJobState === "pending" || boilerplateJobState === "running") && (
+                <div className="mt-3">
+                  <div className="h-2 w-full rounded-full bg-neutral-200 dark:bg-neutral-800 overflow-hidden">
+                    <div
+                      className="h-full bg-neutral-900 dark:bg-neutral-100 transition-all"
+                      style={{ width: `${boilerplateProgress}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-sm" role="status" aria-live="polite">
+                    {boilerplateMessage}
+                  </p>
+                </div>
+              )}
+
+              {boilerplateJobState === "failed" && (
+                <button
+                  type="button"
+                  onClick={retryBoilerplate}
+                  className="mt-3 rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium"
+                >
+                  Retry
+                </button>
+              )}
+
+              {boilerplateJobState === "succeeded" && (
+                <div className="mt-3 flex items-center gap-3">
+                  <p className="text-sm text-green-700 dark:text-green-400">Boilerplate generated and validated.</p>
+                  <a
+                    href="/api/boilerplate/download"
+                    className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium"
+                  >
+                    Download zip
+                  </a>
+                  {boilerplateJobId && (
+                    <a
+                      href={`/preview/${boilerplateJobId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium"
+                    >
+                      Live Preview
+                    </a>
+                  )}
+                  {boilerplateStale && (
+                    <button
+                      type="button"
+                      onClick={generateBoilerplate}
+                      className="text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:underline"
+                    >
+                      Regenerate
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <button
             type="button"

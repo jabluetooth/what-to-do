@@ -45,6 +45,18 @@ export interface GuestSession {
   stack?: StackRecommendation;
   /** Set when the PRD changes after a stack was generated (PRD -> stack staleness cascade). */
   stackStale?: boolean;
+  /** R2 prefix ("guest/{sessionId}/{jobId}") of the active, successfully-validated boilerplate. */
+  boilerplateR2Prefix?: string;
+  /** Set when the stack changes after a boilerplate was generated (stack -> boilerplate staleness cascade). */
+  boilerplateStale?: boolean;
+  /**
+   * Whether the generated boilerplate can run in a WebContainer preview (PRD §6.5). Always true
+   * in v1 since the only seed template is JS/TS (Next.js) regardless of the recommended stack —
+   * this flag is the hook for when non-JS templates (Django, Rails, ...) exist, rather than
+   * inferring preview support from the recommended stack text, which could mismatch what was
+   * actually generated.
+   */
+  boilerplateWebContainerCompatible?: boolean;
   currentStage: PipelineStage;
   createdAt: string;
   updatedAt: string;

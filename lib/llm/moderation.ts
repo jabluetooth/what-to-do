@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MODEL_FAST } from "@/lib/groq";
+import { MODEL_FAST, MODEL_QUALITY } from "@/lib/groq";
 import { callGroqTool } from "@/lib/llm/callTool";
 
 export type ModerationVerdict = "allow" | "flag" | "block";
@@ -45,6 +45,7 @@ export async function moderateInput(text: string): Promise<ModerationResult> {
   try {
     return await callGroqTool({
       model: MODEL_FAST,
+      fallbackModel: MODEL_QUALITY,
       maxTokens: 200,
       tool: MODERATION_TOOL,
       userContent: `Classify this app-idea prompt submitted to a dev-tools product that scaffolds real, runnable code from it:\n\n"""${text}"""`,
