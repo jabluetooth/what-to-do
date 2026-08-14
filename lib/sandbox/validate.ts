@@ -13,7 +13,7 @@ const INSTALL_TIMEOUT_MS = 180_000;
 const BUILD_TIMEOUT_MS = 180_000;
 
 /**
- * Names of env vars npm/node/the OS shell actually need to run `npm install`/`npm run build`.
+ * Names of env vars corepack/pnpm/node/the OS shell actually need to run the install/build.
  * Everything else in the real process.env (every app secret: DATABASE_URL, R2/Groq/QStash/Auth
  * credentials) is deliberately left out — the files being built here are LLM-generated from
  * untrusted user prompts, and `next build` executes that code (prerendering) as part of this
@@ -35,7 +35,7 @@ const INHERITED_ENV_KEYS = [
   "USERPROFILE",
 ];
 
-function buildChildEnv(fakeHome: string, npmCacheDir: string): NodeJS.ProcessEnv {
+function buildChildEnv(fakeHome: string, extra: Record<string, string>): NodeJS.ProcessEnv {
   // NODE_ENV is non-optional on NodeJS.ProcessEnv's type (Next.js's own ambient declaration) —
   // `next build` forces production mode internally regardless, so this doesn't change behavior.
   const env: NodeJS.ProcessEnv = { NODE_ENV: process.env.NODE_ENV };
@@ -45,51 +45,43 @@ function buildChildEnv(fakeHome: string, npmCacheDir: string): NodeJS.ProcessEnv
     if (value !== undefined) env[key] = value;
   }
   env.HOME = fakeHome;
-  env.npm_config_cache = npmCacheDir;
-  return env;
+  return { ...env, ...extra };
 }
 
 /**
- * Deliberately NOT inside the per-job tmpdir, and never deleted here: every job installs the
- * exact same template dependencies (package.json is static, never LLM-filled — see template.ts),
- * so on a warm container this lets a second job reuse tarballs the first one already downloaded
- * instead of re-fetching the whole tree from scratch. That matters on platforms with a small,
- * fixed /tmp quota (e.g. Vercel Hobby's 512MB): a cache dir that used to be recreated and thrown
- * away per job meant every single job paid the full download+unpack cost, which is the main
- * thing that pushes a small-quota /tmp into ENOSPC. Safe to share: content is registry tarballs
- * for fixed, non-LLM-controlled package names/versions, not attacker-influenced.
+ * pnpm (via corepack, bundled with Node itself) instead of npm: npm keeps a compressed tarball
+ * cache AND a fully-unpacked node_modules simultaneously, so peak disk during install is
+ * roughly 1.5-2x actual package content — on a small fixed /tmp quota (e.g. Vercel Hobby's
+ * 512MB) that alone was enough to hit ENOSPC even with a shared cache and a trimmed dep list.
+ * pnpm keeps exactly one physical copy of each package's content in this store and hardlinks it
+ * into node_modules, so repeat installs of the same (unchanged, non-LLM-controlled — see
+ * template.ts) template dependencies cost close to zero additional disk after the first job on
+ * a given container. Deliberately NOT inside the per-job tmpdir and never deleted here, for the
+ * same reuse-across-jobs reasoning the old shared npm cache dir had.
  */
-const SHARED_NPM_CACHE_DIR = path.join(tmpdir(), "wtd-validate-npm-cache");
+const SHARED_PNPM_STORE_DIR = path.join(tmpdir(), "wtd-validate-pnpm-store");
 
-/** Dev-only tooling the shipped template lists for the user's own later `db:push`, not needed to prove `next build` succeeds — dropping it from the validate-only install trims real peak disk usage without changing what actually ships. */
-const VALIDATE_ONLY_STRIP_DEV_DEPS = ["drizzle-kit"];
-
-function stripValidateOnlyDeps(packageJsonContent: string): string {
-  try {
-    const pkg = JSON.parse(packageJsonContent);
-    if (pkg.devDependencies) {
-      for (const dep of VALIDATE_ONLY_STRIP_DEV_DEPS) delete pkg.devDependencies[dep];
-    }
-    return JSON.stringify(pkg, null, 2);
-  } catch {
-    return packageJsonContent;
-  }
-}
+/** Where corepack caches the pnpm CLI package itself — shared for the same reason as the store above (small, but no reason to re-fetch it every job). */
+const SHARED_COREPACK_HOME = path.join(tmpdir(), "wtd-validate-corepack-home");
 
 /**
  * Interim local-subprocess validator standing in for a real isolated sandbox (Vercel
  * Sandbox / E2B), which was never provisioned (see build plan open item #2). Runs
- * `npm install && npm run build` directly on this host — fine for local development/testing,
+ * `pnpm install` then the built app's own build binary directly on this host — fine for local
+ * development/testing,
  * NOT safe for a public multi-tenant deployment where prompts (and therefore this generated
  * code) come from untrusted users: there's no filesystem/process isolation, only an env
  * allowlist (buildChildEnv) keeping app secrets out of the child process's reach. Swap this
  * module's implementation for a real sandbox before real traffic; callers (the job worker)
  * don't need to change.
  *
- * Timeouts are generous (3 min each) because a cold local `npm install` is genuinely much
- * slower than the PRD's ~60s boilerplate+preview NFR target, which assumes a real cloud
- * sandbox with warm dependency caches. This validator optimizes for correctness while
- * testing, not for hitting that timing target — that's the real sandbox's job.
+ * pnpm via `corepack` (bundled with Node itself, no separate install needed) rather than npm —
+ * see SHARED_PNPM_STORE_DIR's doc comment for why.
+ *
+ * Timeouts are generous (3 min each) because a cold local install is genuinely much slower than
+ * the PRD's ~60s boilerplate+preview NFR target, which assumes a real cloud sandbox with warm
+ * dependency caches. This validator optimizes for correctness while testing, not for hitting
+ * that timing target — that's the real sandbox's job.
  */
 export async function validateBoilerplate(
   files: TemplateFile[],
@@ -97,32 +89,31 @@ export async function validateBoilerplate(
 ): Promise<ValidationResult> {
   const dir = await mkdtemp(path.join(tmpdir(), "wtd-validate-"));
   // On Vercel's serverless filesystem, $HOME points at a directory that doesn't actually
-  // exist (only /tmp is writable there), so npm's default ~/.npm cache/config resolution
-  // fails with ENOENT before it can even reach the network. Pointing HOME/npm's cache at a
-  // directory we just created under the OS temp dir sidesteps that without touching the
-  // parent process's real environment.
+  // exist (only /tmp is writable there), so npm's/pnpm's default config resolution fails with
+  // ENOENT before it can even reach the network. Pointing HOME at a directory we just created
+  // under the OS temp dir sidesteps that without touching the parent process's real environment.
   const fakeHome = path.join(dir, ".home");
   await mkdir(fakeHome, { recursive: true });
-  await mkdir(SHARED_NPM_CACHE_DIR, { recursive: true });
-  const npmEnv = buildChildEnv(fakeHome, SHARED_NPM_CACHE_DIR);
+  await mkdir(SHARED_PNPM_STORE_DIR, { recursive: true });
+  await mkdir(SHARED_COREPACK_HOME, { recursive: true });
+  const childEnv = buildChildEnv(fakeHome, { COREPACK_HOME: SHARED_COREPACK_HOME });
   const log: string[] = [];
 
   try {
     for (const file of files) {
       const filePath = path.join(dir, ...file.path.split("/"));
       await mkdir(path.dirname(filePath), { recursive: true });
-      const content = file.path === "package.json" ? stripValidateOnlyDeps(file.content) : file.content;
-      await writeFile(filePath, content, "utf8");
+      await writeFile(filePath, file.content, "utf8");
     }
 
     await onPhase?.("install");
-    log.push(`$ npm install (in ${dir})`);
+    log.push(`$ corepack pnpm install (in ${dir})`);
     const install = await runCommand(
-      "npm",
-      ["install", "--no-audit", "--no-fund", "--ignore-scripts"],
+      "corepack",
+      ["pnpm", "install", "--ignore-scripts", "--store-dir", SHARED_PNPM_STORE_DIR],
       dir,
       INSTALL_TIMEOUT_MS,
-      npmEnv
+      childEnv
     );
     log.push(install.stdout, install.stderr);
     if (install.code !== 0) {
@@ -131,8 +122,16 @@ export async function validateBoilerplate(
     }
 
     await onPhase?.("build");
-    log.push("$ npm run build");
-    const build = await runCommand("npm", ["run", "build"], dir, BUILD_TIMEOUT_MS, npmEnv);
+    // Invokes the installed `next` binary directly rather than `corepack pnpm run build`:
+    // confirmed live that pnpm's `run`/`exec` both perform a dependency-status self-check that
+    // shells out to a bare, unqualified `pnpm` — which isn't on PATH when pnpm is only reachable
+    // via `corepack pnpm` (no `corepack enable` shim installed), and fails the whole step even
+    // though the actual build would have succeeded. `pnpm install` above doesn't hit this; only
+    // `run`/`exec` do. If a future template's build step isn't a `next build`, this needs a
+    // per-template binary/command, same as multi-stack template support already will.
+    const nextBin = path.join(dir, "node_modules", ".bin", "next");
+    log.push(`$ ${nextBin} build`);
+    const build = await runCommand(nextBin, ["build"], dir, BUILD_TIMEOUT_MS, childEnv);
     log.push(build.stdout, build.stderr);
     if (build.code !== 0) {
       noteIfDiskFull(log, build.stdout, build.stderr);
