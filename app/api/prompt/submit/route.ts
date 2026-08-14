@@ -60,7 +60,15 @@ export async function POST(request: Request) {
     });
   }
 
-  const { sections } = await generatePrd({ prompt, hints });
+  let sections;
+  try {
+    ({ sections } = await generatePrd({ prompt, hints }));
+  } catch {
+    return NextResponse.json(
+      { error: "Couldn't generate your PRD right now. Please try again in a moment." },
+      { status: 502 }
+    );
+  }
 
   session.prompt = prompt;
   session.hints = hints;

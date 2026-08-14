@@ -10,7 +10,12 @@ export interface VaguenessResult {
 
 const VaguenessResultSchema = z.object({
   vague: z.boolean(),
-  clarifyingQuestion: z.string().optional(),
+  // .nullish() not .optional(): the model reliably emits an explicit `null` for
+  // this field when unset rather than omitting the key, which .optional() alone rejects.
+  clarifyingQuestion: z
+    .string()
+    .nullish()
+    .transform((v) => v ?? undefined),
 });
 
 const VAGUENESS_TOOL = {

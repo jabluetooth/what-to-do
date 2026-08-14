@@ -1,0 +1,48 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { getOrInitGuestSession, writeGuestSession } from "@/lib/redis/guestSession";
+import { enforceGuestGenerationCap, RateLimitExceededError } from "@/lib/redis/rateLimit";
+import { PRD_SECTION_DEFS, regeneratePrdSection } from "@/lib/llm/prd";
+import { replaceSection } from "@/lib/pipeline/prdSections";
+
+const SECTION_KEYS = PRD_SECTION_DEFS.map((s) => s.key) as [string, ...string[]];
+
+const BodySchema = z.object({
+  sectionKey: z.enum(SECTION_KEYS),
+  instructions: z.string().trim().max(500).optional(),
+});
+
+export async function POST(request: Request) {
+  const parsed = BodySchema.safeParse(await request.json());
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid request", details: parsed.error.flatten() }, { status: 400 });
+  }
+
+  const { id: sessionId, session } = await getOrInitGuestSession();
+  if (!session.prdSections || !session.prompt) {
+    return NextResponse.json({ error: "No PRD to regenerate for this session." }, { status: 409 });
+  }
+
+  try {
+    await enforceGuestGenerationCap(sessionId, "prd");
+  } catch (err) {
+    if (err instanceof RateLimitExceededError) {
+      return NextResponse.json({ error: err.message }, { status: 429 });
+    }
+    throw err;
+  }
+
+  const newSection = await regeneratePrdSection({
+    prompt: session.prompt,
+    hints: session.hints,
+    existingSections: session.prdSections,
+    targetKey: parsed.data.sectionKey,
+    instructions: parsed.data.instructions,
+  });
+
+  session.prdSections = replaceSection(session.prdSections, newSection.key, newSection.content);
+  session.updatedAt = new Date().toISOString();
+  await writeGuestSession(sessionId, session);
+
+  return NextResponse.json({ sections: session.prdSections });
+}

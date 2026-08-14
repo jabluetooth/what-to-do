@@ -26,12 +26,20 @@ export async function POST(request: Request) {
   const followUpContext = `${session.prompt}\n\n(Clarification Q: ${question}\nA: ${answer})`;
   const recheck = await checkVagueness(followUpContext, session.hints);
 
-  const { sections } = await generatePrd({
-    prompt: session.prompt,
-    hints: session.hints,
-    clarification: { question, answer },
-    lowConfidence: recheck.vague,
-  });
+  let sections;
+  try {
+    ({ sections } = await generatePrd({
+      prompt: session.prompt,
+      hints: session.hints,
+      clarification: { question, answer },
+      lowConfidence: recheck.vague,
+    }));
+  } catch {
+    return NextResponse.json(
+      { error: "Couldn't generate your PRD right now. Please try again in a moment." },
+      { status: 502 }
+    );
+  }
 
   session.pendingClarification = null;
   session.prdSections = sections;

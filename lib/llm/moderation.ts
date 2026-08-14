@@ -11,7 +11,12 @@ export interface ModerationResult {
 
 const ModerationResultSchema = z.object({
   verdict: z.enum(["allow", "flag", "block"]),
-  reason: z.string().optional(),
+  // .nullish() not .optional(): models sometimes emit an explicit `null` for an unset
+  // optional field rather than omitting the key, which .optional() alone would reject.
+  reason: z
+    .string()
+    .nullish()
+    .transform((v) => v ?? undefined),
 });
 
 const MODERATION_TOOL = {

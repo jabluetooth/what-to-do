@@ -22,11 +22,17 @@ export default function Home() {
   const [ideaLoading, setIdeaLoading] = useState(false);
   const [ideaError, setIdeaError] = useState<string | null>(null);
 
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [draftContent, setDraftContent] = useState("");
+  const [sectionBusyKey, setSectionBusyKey] = useState<string | null>(null);
+  const [sectionError, setSectionError] = useState<string | null>(null);
+
   const promptId = useId();
   const platformId = useId();
   const scopeId = useId();
   const stackId = useId();
   const answerId = useId();
+  const sectionEditId = useId();
 
   const hints = () => ({
     platform: platform || undefined,
@@ -91,6 +97,67 @@ export default function Home() {
     setPrompt("");
     setAnswer("");
     setState({ phase: "idle" });
+    setEditingKey(null);
+    setDraftContent("");
+    setSectionBusyKey(null);
+    setSectionError(null);
+  }
+
+  function startEdit(section: PrdSection) {
+    setEditingKey(section.key);
+    setDraftContent(section.content);
+    setSectionError(null);
+  }
+
+  function cancelEdit() {
+    setEditingKey(null);
+    setDraftContent("");
+  }
+
+  async function saveEdit(sectionKey: string) {
+    if (!draftContent.trim()) return;
+    setSectionBusyKey(sectionKey);
+    setSectionError(null);
+    try {
+      const res = await fetch("/api/prd/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sectionKey, content: draftContent }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSectionError(data.error ?? "Couldn't save the edit. Please try again.");
+        return;
+      }
+      setState((prev) => (prev.phase === "result" ? { ...prev, sections: data.sections } : prev));
+      setEditingKey(null);
+    } catch {
+      setSectionError("Network error — please try again.");
+    } finally {
+      setSectionBusyKey(null);
+    }
+  }
+
+  async function regenerateSection(sectionKey: string) {
+    setSectionBusyKey(sectionKey);
+    setSectionError(null);
+    try {
+      const res = await fetch("/api/prd/regenerate-section", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sectionKey }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSectionError(data.error ?? "Couldn't regenerate this section. Please try again.");
+        return;
+      }
+      setState((prev) => (prev.phase === "result" ? { ...prev, sections: data.sections } : prev));
+    } catch {
+      setSectionError("Network error — please try again.");
+    } finally {
+      setSectionBusyKey(null);
+    }
   }
 
   async function generateIdea() {
@@ -302,14 +369,82 @@ export default function Home() {
               This PRD is low-confidence — the idea was still pretty thin after clarification. Worth reviewing closely before generating a stack.
             </div>
           )}
-          {state.sections.map((section) => (
-            <section key={section.key}>
-              <h2 className="text-lg font-semibold">{section.title}</h2>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-neutral-700 dark:text-neutral-300">
-                {section.content}
-              </p>
-            </section>
-          ))}
+          {sectionError && (
+            <p className="text-sm text-red-600 dark:text-red-400" role="status" aria-live="polite">
+              {sectionError}
+            </p>
+          )}
+          {state.sections.map((section) => {
+            const isEditing = editingKey === section.key;
+            const isBusy = sectionBusyKey === section.key;
+            const anyBusy = sectionBusyKey !== null;
+
+            return (
+              <section key={section.key}>
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-lg font-semibold">{section.title}</h2>
+                  {!isEditing && (
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => startEdit(section)}
+                        disabled={anyBusy}
+                        className="text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:underline disabled:opacity-50"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => regenerateSection(section.key)}
+                        disabled={anyBusy}
+                        className="text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:underline disabled:opacity-50"
+                      >
+                        {isBusy ? "Regenerating…" : "Regenerate"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {isEditing ? (
+                  <div className="mt-1 space-y-2">
+                    <label htmlFor={`${sectionEditId}-${section.key}`} className="sr-only">
+                      Edit {section.title}
+                    </label>
+                    <textarea
+                      id={`${sectionEditId}-${section.key}`}
+                      value={draftContent}
+                      onChange={(e) => setDraftContent(e.target.value)}
+                      rows={4}
+                      disabled={isBusy}
+                      className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => saveEdit(section.key)}
+                        disabled={isBusy || !draftContent.trim()}
+                        className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                      >
+                        {isBusy ? "Saving…" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEdit}
+                        disabled={isBusy}
+                        className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-neutral-700 dark:text-neutral-300">
+                    {isBusy ? "Regenerating…" : section.content}
+                  </p>
+                )}
+              </section>
+            );
+          })}
           <button
             type="button"
             onClick={startOver}
