@@ -16,6 +16,9 @@ export type ConvertedProject = {
   lowConfidence: boolean;
   stack: StackRecommendation | null;
   hasBoilerplate: boolean;
+  /** Only set when hasBoilerplate is true — lets the caller trigger a GitHub auto-push without a second DB read. */
+  boilerplateVersionId: string | null;
+  boilerplateR2Prefix: string | null;
 };
 
 /**
@@ -110,5 +113,7 @@ export async function convertGuestSessionToProject(userId: string): Promise<Conv
     lowConfidence: session.prdLowConfidence ?? false,
     stack: session.stack ?? null,
     hasBoilerplate: Boolean(destPrefix),
+    boilerplateVersionId: destPrefix ? boilerplateVersionId : null,
+    boilerplateR2Prefix: destPrefix,
   };
 }

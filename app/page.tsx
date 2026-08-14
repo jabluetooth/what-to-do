@@ -1094,7 +1094,11 @@ export default function Home() {
 
           {state.hasBoilerplate && (
             <p className="text-sm text-neutral-600 dark:text-neutral-400">
-              A generated boilerplate was saved with this project too.
+              A generated boilerplate was saved with this project too. If you&apos;ve turned on GitHub auto-push in{" "}
+              <a href="/account" className="underline">
+                account settings
+              </a>
+              , a repo is being created for it now.
             </p>
           )}
 

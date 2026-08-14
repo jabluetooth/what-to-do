@@ -15,6 +15,27 @@ export const users = pgTable("user", {
   email: text("email").unique(),
   emailVerified: timestamp("emailVerified", { mode: "date" }),
   image: text("image"),
+  /** Only meaningful once a githubConnection row exists (repo-scoped token granted) — see lib/github/connection.ts. */
+  autoPushToGithub: boolean("autoPushToGithub").notNull().default(false),
+});
+
+/**
+ * A user's elevated GitHub token (repo scope), separate from the accounts table Auth.js manages
+ * for sign-in: sign-in intentionally stays on a least-privilege token (lib/auth.ts), and
+ * Auth.js's own account-linking doesn't reliably re-persist a wider-scope token for an
+ * already-linked user on re-authorization — this table is written explicitly from the jwt
+ * callback instead (see lib/auth.ts), only when the returned scope actually includes "repo".
+ */
+export const githubConnections = pgTable("github_connection", {
+  userId: text("userId")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  githubLogin: text("githubLogin").notNull(),
+  /** AES-256-GCM ciphertext (lib/github/tokenCrypto.ts) — never stored in plaintext. */
+  encryptedAccessToken: text("encryptedAccessToken").notNull(),
+  scope: text("scope").notNull(),
+  createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt", { mode: "date" }).notNull().defaultNow(),
 });
 
 export const accounts = pgTable(
@@ -117,5 +138,9 @@ export const boilerplateVersions = pgTable("boilerplate_version", {
     .references(() => projects.id, { onDelete: "cascade" }),
   r2Prefix: text("r2Prefix").notNull(),
   webContainerCompatible: boolean("webContainerCompatible").notNull().default(false),
+  /** Set on a successful auto-push (lib/github/pushBoilerplate.ts) — null if never pushed or the push failed. */
+  githubRepoUrl: text("githubRepoUrl"),
+  /** Set when an auto-push attempt fails — best-effort, never blocks the conversion itself. */
+  githubPushError: text("githubPushError"),
   createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
 });
