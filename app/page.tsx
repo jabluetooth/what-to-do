@@ -70,6 +70,9 @@ export default function Home() {
   const [boilerplateMessage, setBoilerplateMessage] = useState("");
   const [boilerplateError, setBoilerplateError] = useState<string | null>(null);
   const [boilerplateStale, setBoilerplateStale] = useState(false);
+  // Whether this boilerplate can run in the in-browser live preview — false for non-JS/TS
+  // stacks (e.g. FastAPI), which only get a downloadable zip. null until a job succeeds.
+  const [boilerplateWebContainerCompatible, setBoilerplateWebContainerCompatible] = useState<boolean | null>(null);
 
   const [sessionTtlSeconds, setSessionTtlSeconds] = useState<number | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -427,6 +430,7 @@ export default function Home() {
         if (data.state === "succeeded") {
           setBoilerplateJobState("succeeded");
           setBoilerplateStale(false);
+          setBoilerplateWebContainerCompatible(data.webContainerCompatible ?? true);
           return;
         }
         if (data.state === "failed") {
@@ -449,6 +453,7 @@ export default function Home() {
     setBoilerplateJobState("pending");
     setBoilerplateProgress(0);
     setBoilerplateMessage("Queued");
+    setBoilerplateWebContainerCompatible(null);
     try {
       const res = await fetch("/api/boilerplate/generate", { method: "POST" });
       const data = await res.json();
@@ -967,23 +972,35 @@ export default function Home() {
               )}
 
               {boilerplateJobState === "succeeded" && (
-                <div className="mt-3 flex items-center gap-3">
-                  <p className="text-sm text-green-700 dark:text-green-400">Boilerplate generated and validated.</p>
-                  <a
-                    href="/api/boilerplate/download"
-                    className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium"
-                  >
-                    Download zip
-                  </a>
-                  {boilerplateJobId && (
+                <div className="mt-3 flex flex-col gap-1">
+                  <div className="flex items-center gap-3">
+                    <p className="text-sm text-green-700 dark:text-green-400">
+                      {boilerplateWebContainerCompatible === false
+                        ? "Boilerplate generated (Python syntax checked, not run)."
+                        : "Boilerplate generated and validated."}
+                    </p>
                     <a
-                      href={`/preview/${boilerplateJobId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium"
+                      href="/api/boilerplate/download"
+                      className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium"
                     >
-                      Live Preview
+                      Download zip
                     </a>
+                    {boilerplateJobId && (
+                      <a
+                        href={`/preview/${boilerplateJobId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium"
+                      >
+                        {boilerplateWebContainerCompatible === false ? "View files" : "Live Preview"}
+                      </a>
+                    )}
+                  </div>
+                  {boilerplateWebContainerCompatible === false && (
+                    <p className="text-xs text-neutral-500">
+                      Live preview isn&apos;t available for this stack — download the zip and run it locally (see
+                      the included README for the exact command).
+                    </p>
                   )}
                   {boilerplateStale && (
                     <button

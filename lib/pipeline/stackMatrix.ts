@@ -6,6 +6,13 @@ import type { PromptHints, StackCategory } from "@/lib/types";
  * for picks this matrix already made; it never chooses the stack itself. This also
  * keeps "override one piece" well-defined: swapping a deterministic pick for another
  * known option, not re-rolling a black box.
+ *
+ * pickStack()'s auto-recommendation only ever picks a backend with a real template behind it
+ * (see lib/pipeline/template.ts's resolveTemplateId): "Next.js API routes / Server Actions" or
+ * "FastAPI (Python)". NestJS/Django/Rails stay listed below as manual override choices (a user
+ * can still pick one from the dropdown) but generating a matching boilerplate for those isn't
+ * implemented — overriding to them reintroduces the same stack/boilerplate mismatch this file's
+ * auto-pick logic exists to avoid.
  */
 
 export const STACK_ALTERNATIVES: Record<StackCategory, string[]> = {
@@ -56,20 +63,17 @@ export function pickStack(hints: PromptHints | undefined): StackPicks {
   else if (familiarityIncludes(familiarity, "vue")) frontend = "Vue.js + Nuxt";
   else if (familiarityIncludes(familiarity, "svelte")) frontend = "SvelteKit";
 
-  // Backend
+  // Backend — constrained to the two backends that have an actual boilerplate template
+  // (see lib/pipeline/template.ts's resolveTemplateId): recommending NestJS/Django/Rails
+  // when generation can only ever produce Next.js or FastAPI code was the original "boilerplate
+  // never matches the recommended stack" bug. Django/Rails/NestJS familiarity still steers
+  // toward the closest deliverable pick (Python-family -> FastAPI, otherwise Next.js) rather
+  // than being ignored outright.
   let backend = "Next.js API routes / Server Actions (same app)";
   let nonJsBackend = false;
-  if (familiarityIncludes(familiarity, "django")) {
-    backend = "Django (Python)";
-    nonJsBackend = true;
-  } else if (familiarityIncludes(familiarity, "rails", "ruby")) {
-    backend = "Ruby on Rails";
-    nonJsBackend = true;
-  } else if (familiarityIncludes(familiarity, "fastapi", "flask")) {
+  if (familiarityIncludes(familiarity, "django", "rails", "ruby", "fastapi", "flask")) {
     backend = "FastAPI (Python)";
     nonJsBackend = true;
-  } else if (familiarityIncludes(familiarity, "nestjs", "nest.js") || scopeSize === "production") {
-    backend = "NestJS (Node.js)";
   }
 
   // Database

@@ -50,11 +50,11 @@ export interface GuestSession {
   /** Set when the stack changes after a boilerplate was generated (stack -> boilerplate staleness cascade). */
   boilerplateStale?: boolean;
   /**
-   * Whether the generated boilerplate can run in a WebContainer preview (PRD §6.5). Always true
-   * in v1 since the only seed template is JS/TS (Next.js) regardless of the recommended stack —
-   * this flag is the hook for when non-JS templates (Django, Rails, ...) exist, rather than
-   * inferring preview support from the recommended stack text, which could mismatch what was
-   * actually generated.
+   * Whether the generated boilerplate can run in a WebContainer preview (PRD §6.5) — set from
+   * which template actually produced it (lib/pipeline/template.ts's isWebContainerCompatible),
+   * not inferred from the recommended stack text, so it can't mismatch what was actually
+   * generated. False for the FastAPI template: /preview/[ref] falls back to a static file-tree
+   * view instead of booting a live server.
    */
   boilerplateWebContainerCompatible?: boolean;
   currentStage: PipelineStage;

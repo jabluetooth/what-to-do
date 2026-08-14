@@ -17,5 +17,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ jobI
     progress: job.progress,
     message: job.message,
     error: job.error,
+    webContainerCompatible: job.webContainerCompatible,
   });
 }

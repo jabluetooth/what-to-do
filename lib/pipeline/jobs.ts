@@ -12,6 +12,8 @@ export interface JobRecord {
   error?: string;
   /** R2 prefix on success, e.g. "guest/{sessionId}/{jobId}". */
   resultRef?: string;
+  /** Set alongside resultRef on success — lets the client pick the right preview affordance without a separate guest-session read. */
+  webContainerCompatible?: boolean;
   attempt: number;
   createdAt: string;
   updatedAt: string;

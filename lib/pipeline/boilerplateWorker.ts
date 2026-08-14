@@ -1,10 +1,12 @@
 import { getJob, updateJob, claimJobRun, releaseJobRun } from "@/lib/pipeline/jobs";
 import { readGuestSession, writeGuestSession } from "@/lib/redis/guestSession";
-import { loadTemplate, type TemplateFile } from "@/lib/pipeline/template";
+import { loadTemplate, resolveTemplateId, isWebContainerCompatible, FASTAPI_TEMPLATE_ID, type TemplateFile } from "@/lib/pipeline/template";
 import { generateBoilerplateFillIn } from "@/lib/llm/boilerplate";
+import { generateFastapiFillIn } from "@/lib/llm/boilerplateFastapi";
 import { writeProjectFiles, buildZip, writeProjectZip } from "@/lib/pipeline/projectFiles";
-import { validateBoilerplate } from "@/lib/sandbox/validate";
+import { validateBoilerplate, validateFastapiBoilerplate, type ValidationResult } from "@/lib/sandbox/validate";
 import { refundGenerationCap } from "@/lib/redis/rateLimit";
+import type { PrdSection } from "@/lib/types";
 
 const MAX_LOG_CHARS = 4000;
 
@@ -26,6 +28,68 @@ function mergeFillIn(
   });
 
   return files;
+}
+
+function mergeFastapiFillIn(
+  templateFiles: TemplateFile[],
+  fillIn: { modelsFileContent: string; mainFileContent: string }
+): TemplateFile[] {
+  const files = templateFiles.map((f) => ({ ...f }));
+
+  const modelsFile = files.find((f) => f.path === "models.py");
+  if (modelsFile) modelsFile.content = fillIn.modelsFileContent;
+
+  const mainFile = files.find((f) => f.path === "main.py");
+  if (mainFile) mainFile.content = fillIn.mainFileContent;
+
+  return files;
+}
+
+/**
+ * Fill-in generation branches on which template the recommended stack resolved to (see
+ * template.ts's resolveTemplateId) — this is the actual fix for boilerplate always being
+ * Next.js regardless of the recommended stack. Next.js gets 3 fill-in files (schema, route,
+ * homepage); FastAPI gets 2 (model, main.py — see boilerplateFastapi.ts for why it doesn't
+ * need a separate homepage file).
+ */
+async function generateFillInFiles(
+  templateId: string,
+  templateFiles: TemplateFile[],
+  prompt: string,
+  sections: PrdSection[],
+  jobId: string
+): Promise<TemplateFile[]> {
+  if (templateId === FASTAPI_TEMPLATE_ID) {
+    await updateJob(jobId, { progress: 20, message: "Generating models & routes..." });
+    const fillIn = await generateFastapiFillIn({ prompt, sections });
+    return mergeFastapiFillIn(templateFiles, fillIn);
+  }
+
+  await updateJob(jobId, { progress: 20, message: "Generating routes & models..." });
+  const fillIn = await generateBoilerplateFillIn({ prompt, sections });
+  await updateJob(jobId, { progress: 45, message: "Generating initial UI..." });
+  return mergeFillIn(templateFiles, fillIn);
+}
+
+/**
+ * Validation branches the same way: Next.js gets a real pnpm install + build (validateBoilerplate);
+ * FastAPI gets a lighter syntax-only check (validateFastapiBoilerplate) — see that function's
+ * doc comment for why a real pip install/run isn't attempted.
+ */
+async function runValidation(templateId: string, files: TemplateFile[], jobId: string): Promise<ValidationResult> {
+  if (templateId === FASTAPI_TEMPLATE_ID) {
+    return validateFastapiBoilerplate(files, async (phase) => {
+      if (phase === "build") await updateJob(jobId, { progress: 90, message: "Checking generated Python..." });
+    });
+  }
+
+  return validateBoilerplate(files, async (phase) => {
+    if (phase === "install") {
+      await updateJob(jobId, { progress: 75, message: "Installing dependencies..." });
+    } else {
+      await updateJob(jobId, { progress: 90, message: "Running build check..." });
+    }
+  });
 }
 
 /**
@@ -56,34 +120,22 @@ export async function runBoilerplateJob(jobId: string): Promise<void> {
     }
 
     try {
+      const templateId = resolveTemplateId(session.stack);
+
       await updateJob(jobId, { state: "running", progress: 5, message: "Selecting template..." });
-      const templateFiles = await loadTemplate();
+      const templateFiles = await loadTemplate(templateId);
 
-      await updateJob(jobId, { progress: 20, message: "Generating routes & models..." });
-      const fillIn = await generateBoilerplateFillIn({
-        prompt: session.prompt,
-        sections: session.prdSections,
-      });
-
-      await updateJob(jobId, { progress: 45, message: "Generating initial UI..." });
-      const files = mergeFillIn(templateFiles, fillIn);
+      // Awaited throughout (not fire-and-forget): updateJob is a plain read-modify-write, so an
+      // in-flight progress write racing the final state write below could land last and
+      // silently revert a completed job back to "running" forever.
+      const files = await generateFillInFiles(templateId, templateFiles, session.prompt, session.prdSections, jobId);
 
       await updateJob(jobId, { progress: 60, message: "Writing project files..." });
       const prefix = `guest/${job.sessionId}/${jobId}`;
       const zip = await buildZip(files);
       await Promise.all([writeProjectFiles(prefix, files), writeProjectZip(prefix, zip)]);
 
-      // Awaited (not fire-and-forget): updateJob is a plain read-modify-write, so an in-flight
-      // progress write racing the final state write below could land last and silently revert
-      // a completed job back to "running" forever. Awaiting keeps every write to this job
-      // strictly ordered.
-      const validation = await validateBoilerplate(files, async (phase) => {
-        if (phase === "install") {
-          await updateJob(jobId, { progress: 75, message: "Installing dependencies..." });
-        } else {
-          await updateJob(jobId, { progress: 90, message: "Running build check..." });
-        }
-      });
+      const validation = await runValidation(templateId, files, jobId);
 
       if (!validation.passed) {
         await updateJob(jobId, {
@@ -101,12 +153,18 @@ export async function runBoilerplateJob(jobId: string): Promise<void> {
         return;
       }
 
-      await updateJob(jobId, { state: "succeeded", progress: 100, message: "Done", resultRef: prefix });
+      const webContainerCompatible = isWebContainerCompatible(templateId);
+      await updateJob(jobId, {
+        state: "succeeded",
+        progress: 100,
+        message: validation.unvalidated ? "Done (syntax-only check — review before running)" : "Done",
+        resultRef: prefix,
+        webContainerCompatible,
+      });
 
       session.boilerplateR2Prefix = prefix;
       session.boilerplateStale = false;
-      // Always true in v1 — see the field's doc comment in lib/types.ts.
-      session.boilerplateWebContainerCompatible = true;
+      session.boilerplateWebContainerCompatible = webContainerCompatible;
       session.currentStage = "boilerplate";
       session.updatedAt = new Date().toISOString();
       await writeGuestSession(job.sessionId, session);
