@@ -14,6 +14,8 @@ export interface JobRecord {
   resultRef?: string;
   /** Set alongside resultRef on success — lets the client pick the right preview affordance without a separate guest-session read. */
   webContainerCompatible?: boolean;
+  /** True when the boilerplate's build/syntax check was skipped entirely (no Python interpreter found) rather than run and passed — see validateFastapiBoilerplate. */
+  unvalidated?: boolean;
   attempt: number;
   createdAt: string;
   updatedAt: string;

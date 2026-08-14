@@ -18,5 +18,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ jobI
     message: job.message,
     error: job.error,
     webContainerCompatible: job.webContainerCompatible,
+    unvalidated: job.unvalidated,
   });
 }

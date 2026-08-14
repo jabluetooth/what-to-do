@@ -154,12 +154,18 @@ export async function runBoilerplateJob(jobId: string): Promise<void> {
       }
 
       const webContainerCompatible = isWebContainerCompatible(templateId);
+      // unvalidated (FastAPI-only) means no Python interpreter was found at all, so nothing was
+      // actually checked — the inverse of what "syntax-only check" would suggest. Both this
+      // message and the flag itself are threaded through to the client (jobs.ts, the status
+      // route, app/page.tsx) since the UI previously guessed this from webContainerCompatible
+      // alone and always claimed "syntax checked" even when validation.unvalidated was true.
       await updateJob(jobId, {
         state: "succeeded",
         progress: 100,
-        message: validation.unvalidated ? "Done (syntax-only check — review before running)" : "Done",
+        message: validation.unvalidated ? "Done (no Python interpreter found — not syntax-checked)" : "Done",
         resultRef: prefix,
         webContainerCompatible,
+        unvalidated: validation.unvalidated ?? false,
       });
 
       session.boilerplateR2Prefix = prefix;

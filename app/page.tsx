@@ -73,6 +73,10 @@ export default function Home() {
   // Whether this boilerplate can run in the in-browser live preview — false for non-JS/TS
   // stacks (e.g. FastAPI), which only get a downloadable zip. null until a job succeeds.
   const [boilerplateWebContainerCompatible, setBoilerplateWebContainerCompatible] = useState<boolean | null>(null);
+  // True only when a build/syntax check was skipped entirely (no Python interpreter found for
+  // the FastAPI path) — distinct from webContainerCompatible, which is about live preview, not
+  // whether validation actually ran.
+  const [boilerplateUnvalidated, setBoilerplateUnvalidated] = useState(false);
 
   const [sessionTtlSeconds, setSessionTtlSeconds] = useState<number | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -431,6 +435,7 @@ export default function Home() {
           setBoilerplateJobState("succeeded");
           setBoilerplateStale(false);
           setBoilerplateWebContainerCompatible(data.webContainerCompatible ?? true);
+          setBoilerplateUnvalidated(Boolean(data.unvalidated));
           return;
         }
         if (data.state === "failed") {
@@ -454,6 +459,7 @@ export default function Home() {
     setBoilerplateProgress(0);
     setBoilerplateMessage("Queued");
     setBoilerplateWebContainerCompatible(null);
+    setBoilerplateUnvalidated(false);
     try {
       const res = await fetch("/api/boilerplate/generate", { method: "POST" });
       const data = await res.json();
@@ -974,10 +980,18 @@ export default function Home() {
               {boilerplateJobState === "succeeded" && (
                 <div className="mt-3 flex flex-col gap-1">
                   <div className="flex items-center gap-3">
-                    <p className="text-sm text-green-700 dark:text-green-400">
-                      {boilerplateWebContainerCompatible === false
-                        ? "Boilerplate generated (Python syntax checked, not run)."
-                        : "Boilerplate generated and validated."}
+                    <p
+                      className={
+                        boilerplateUnvalidated
+                          ? "text-sm text-amber-700 dark:text-amber-400"
+                          : "text-sm text-green-700 dark:text-green-400"
+                      }
+                    >
+                      {boilerplateUnvalidated
+                        ? "Boilerplate generated — no Python interpreter was available to check it, review before running."
+                        : boilerplateWebContainerCompatible === false
+                          ? "Boilerplate generated (Python syntax checked)."
+                          : "Boilerplate generated and validated."}
                     </p>
                     <a
                       href="/api/boilerplate/download"

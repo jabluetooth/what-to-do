@@ -92,10 +92,10 @@ export default async function AccountPage() {
             // A distinct re-authorization requesting the additional "repo" scope — GitHub shows
             // its own consent screen for the new permission (the "ask permission" step). The
             // resulting token is captured and persisted from lib/auth.ts's jwt callback.
-            await signIn("github", {
-              authorizationParams: { scope: "read:user user:email repo" },
-              redirectTo: "/account",
-            });
+            // authorizationParams is next-auth's signIn()'s 3rd positional argument, NOT a field
+            // on the options object (confirmed against node_modules/next-auth/lib/actions.js) —
+            // nesting it inside options silently drops it and the scope request never happens.
+            await signIn("github", { redirectTo: "/account" }, { scope: "read:user user:email repo" });
           }}
         >
           <button type="submit">Connect GitHub for repo access</button>
