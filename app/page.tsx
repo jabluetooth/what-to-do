@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { signIn } from "next-auth/react";
 import type { PlatformHint, PrdSection, RandomIdea, ScopeSizeHint, StackCategory, StackRecommendation } from "@/lib/types";
 import { STACK_ALTERNATIVES } from "@/lib/pipeline/stackMatrix";
 
@@ -18,6 +19,15 @@ type FlowState =
   | { phase: "submitting" }
   | { phase: "clarifying"; question: string; submitting: boolean }
   | { phase: "result"; sections: PrdSection[]; lowConfidence: boolean }
+  | {
+      phase: "converted";
+      projectId: string;
+      prompt: string;
+      sections: PrdSection[];
+      lowConfidence: boolean;
+      stack: StackRecommendation | null;
+      hasBoilerplate: boolean;
+    }
   | { phase: "error"; message: string };
 
 const STACK_CATEGORIES: { key: StackCategory; label: string }[] = [
@@ -62,8 +72,11 @@ export default function Home() {
   const [boilerplateStale, setBoilerplateStale] = useState(false);
 
   const [sessionTtlSeconds, setSessionTtlSeconds] = useState<number | null>(null);
-  const [signUpMessage, setSignUpMessage] = useState<string | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  // Set right before signIn()'s full-page navigation so the pagehide handler below can tell
+  // "leaving to sign in" apart from "actually closing the tab" — purging the guest session on
+  // the way to GitHub would delete the exact data /api/account/convert needs on the way back.
+  const signingInRef = useRef(false);
   const [exiting, setExiting] = useState(false);
   const [keepingWorking, setKeepingWorking] = useState(false);
 
@@ -115,12 +128,58 @@ export default function Home() {
     if (!hasProject) return;
 
     function handlePageHide() {
+      if (signingInRef.current) return;
       navigator.sendBeacon("/api/guest/exit");
     }
 
     window.addEventListener("pagehide", handlePageHide);
     return () => window.removeEventListener("pagehide", handlePageHide);
   }, [hasProject]);
+
+  // Runs once on mount to catch the "just came back from GitHub OAuth" case: signIn() does a
+  // full-page redirect, so any in-progress guest work only survives server-side (Redis/R2) —
+  // this is what actually converts it into a saved project once the user is signed in.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkAndConvert() {
+      try {
+        const sessionRes = await fetch("/api/auth/session");
+        const sessionData = await sessionRes.json();
+        if (cancelled || !sessionData?.user) return;
+
+        const convertRes = await fetch("/api/account/convert", { method: "POST" });
+        const convertData = await convertRes.json();
+        if (!cancelled && convertData.project) {
+          const p = convertData.project;
+          // Functional update, checked against the *current* phase, not the "idle" it was at
+          // mount: these two fetches take long enough that an already-signed-in visitor can
+          // start their own prompt before this resolves — don't clobber that with the
+          // conversion recap just because a leftover guest session also happened to exist.
+          setState((prev) =>
+            prev.phase === "idle"
+              ? {
+                  phase: "converted",
+                  projectId: p.projectId,
+                  prompt: p.prompt,
+                  sections: p.sections,
+                  lowConfidence: p.lowConfidence,
+                  stack: p.stack,
+                  hasBoilerplate: p.hasBoilerplate,
+                }
+              : prev
+          );
+        }
+      } catch {
+        // best effort — on failure the user just lands on the normal guest flow
+      }
+    }
+
+    checkAndConvert();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -195,7 +254,6 @@ export default function Home() {
     setBoilerplateError(null);
     setBoilerplateStale(false);
     setSessionTtlSeconds(null);
-    setSignUpMessage(null);
     setShowExitConfirm(false);
   }
 
@@ -217,9 +275,8 @@ export default function Home() {
   }
 
   function handleSignUpClick() {
-    setSignUpMessage(
-      "Sign-up isn't available yet — for now, download your files or copy your PRD before leaving. Guest sessions aren't saved."
-    );
+    signingInRef.current = true;
+    signIn("github", { redirectTo: "/" });
   }
 
   async function keepWorking() {
@@ -662,12 +719,6 @@ export default function Home() {
             </p>
           )}
 
-          {signUpMessage && (
-            <p className="text-xs text-neutral-600 dark:text-neutral-400" role="status" aria-live="polite">
-              {signUpMessage}
-            </p>
-          )}
-
           {state.lowConfidence && (
             <div className="rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
               This PRD is low-confidence — the idea was still pretty thin after clarification. Worth reviewing closely before generating a stack.
@@ -984,6 +1035,65 @@ export default function Home() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {state.phase === "converted" && (
+        <div className="mt-8 space-y-6">
+          <div className="rounded-md border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950 px-4 py-3 text-sm text-emerald-900 dark:text-emerald-200">
+            Saved to your account.
+          </div>
+
+          <div>
+            <h2 className="text-lg font-semibold">Your idea</h2>
+            <p className="text-sm text-neutral-700 dark:text-neutral-300">{state.prompt}</p>
+          </div>
+
+          {state.sections.length > 0 && (
+            <div>
+              <h2 className="text-lg font-semibold">PRD sections</h2>
+              <ul className="mt-2 list-disc list-inside text-sm text-neutral-700 dark:text-neutral-300">
+                {state.sections.map((section) => (
+                  <li key={section.key}>{section.title}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {state.stack && (
+            <div>
+              <h2 className="text-lg font-semibold">Tech stack</h2>
+              <ul className="mt-2 text-sm text-neutral-700 dark:text-neutral-300 space-y-1">
+                {STACK_CATEGORIES.map(({ key, label }) => (
+                  <li key={key}>
+                    <span className="font-medium">{label}:</span> {state.stack![key].choice}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {state.hasBoilerplate && (
+            <p className="text-sm text-neutral-600 dark:text-neutral-400">
+              A generated boilerplate was saved with this project too.
+            </p>
+          )}
+
+          <p className="text-xs text-neutral-500">
+            Full editing and a project dashboard for signed-in accounts are coming soon — for now,{" "}
+            <a href="/account" className="underline">
+              your account page
+            </a>{" "}
+            confirms you&apos;re signed in.
+          </p>
+
+          <button
+            type="button"
+            onClick={startOver}
+            className="rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium"
+          >
+            Start a new project
+          </button>
         </div>
       )}
     </main>

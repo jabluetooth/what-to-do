@@ -13,13 +13,51 @@ const INSTALL_TIMEOUT_MS = 180_000;
 const BUILD_TIMEOUT_MS = 180_000;
 
 /**
+ * Names of env vars npm/node/the OS shell actually need to run `npm install`/`npm run build`.
+ * Everything else in the real process.env (every app secret: DATABASE_URL, R2/Groq/QStash/Auth
+ * credentials) is deliberately left out — the files being built here are LLM-generated from
+ * untrusted user prompts, and `next build` executes that code (prerendering) as part of this
+ * same install+build step. Spreading the full process.env into that child process would hand
+ * every production credential to code an attacker can influence via prompt injection.
+ */
+const INHERITED_ENV_KEYS = [
+  "PATH",
+  "TEMP",
+  "TMP",
+  "TMPDIR",
+  // Windows-only, needed for `shell: true` (cmd.exe) and node itself to function there.
+  "SYSTEMROOT",
+  "COMSPEC",
+  "PATHEXT",
+  "WINDIR",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "USERPROFILE",
+];
+
+function buildChildEnv(fakeHome: string): NodeJS.ProcessEnv {
+  // NODE_ENV is non-optional on NodeJS.ProcessEnv's type (Next.js's own ambient declaration) —
+  // `next build` forces production mode internally regardless, so this doesn't change behavior.
+  const env: NodeJS.ProcessEnv = { NODE_ENV: process.env.NODE_ENV };
+  const lookup = new Map(Object.entries(process.env).map(([key, value]) => [key.toUpperCase(), value]));
+  for (const key of INHERITED_ENV_KEYS) {
+    const value = lookup.get(key);
+    if (value !== undefined) env[key] = value;
+  }
+  env.HOME = fakeHome;
+  env.npm_config_cache = path.join(fakeHome, ".npm-cache");
+  return env;
+}
+
+/**
  * Interim local-subprocess validator standing in for a real isolated sandbox (Vercel
  * Sandbox / E2B), which was never provisioned (see build plan open item #2). Runs
- * `npm install && npm run build` directly on this host with full host access — fine for
- * local development/testing, NOT safe for a public multi-tenant deployment where prompts
- * (and therefore this generated code) come from untrusted users. Swap this module's
- * implementation for a real sandbox before that happens; callers (the job worker) don't
- * need to change.
+ * `npm install && npm run build` directly on this host — fine for local development/testing,
+ * NOT safe for a public multi-tenant deployment where prompts (and therefore this generated
+ * code) come from untrusted users: there's no filesystem/process isolation, only an env
+ * allowlist (buildChildEnv) keeping app secrets out of the child process's reach. Swap this
+ * module's implementation for a real sandbox before real traffic; callers (the job worker)
+ * don't need to change.
  *
  * Timeouts are generous (3 min each) because a cold local `npm install` is genuinely much
  * slower than the PRD's ~60s boilerplate+preview NFR target, which assumes a real cloud
@@ -38,7 +76,7 @@ export async function validateBoilerplate(
   // parent process's real environment.
   const fakeHome = path.join(dir, ".home");
   await mkdir(fakeHome, { recursive: true });
-  const npmEnv = { ...process.env, HOME: fakeHome, npm_config_cache: path.join(fakeHome, ".npm-cache") };
+  const npmEnv = buildChildEnv(fakeHome);
   const log: string[] = [];
 
   try {
@@ -50,7 +88,13 @@ export async function validateBoilerplate(
 
     onPhase?.("install");
     log.push(`$ npm install (in ${dir})`);
-    const install = await runCommand("npm", ["install", "--no-audit", "--no-fund"], dir, INSTALL_TIMEOUT_MS, npmEnv);
+    const install = await runCommand(
+      "npm",
+      ["install", "--no-audit", "--no-fund", "--ignore-scripts"],
+      dir,
+      INSTALL_TIMEOUT_MS,
+      npmEnv
+    );
     log.push(install.stdout, install.stderr);
     if (install.code !== 0) {
       return { passed: false, log: log.join("\n") };

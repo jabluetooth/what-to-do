@@ -1,4 +1,10 @@
-import { PutObjectCommand, GetObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
+import {
+  PutObjectCommand,
+  GetObjectCommand,
+  ListObjectsV2Command,
+  DeleteObjectsCommand,
+  CopyObjectCommand,
+} from "@aws-sdk/client-s3";
 import JSZip from "jszip";
 import { getR2, getR2Bucket } from "@/lib/r2";
 import type { TemplateFile } from "@/lib/pipeline/template";
@@ -99,6 +105,40 @@ export async function deleteProjectFiles(prefix: string): Promise<void> {
     new DeleteObjectsCommand({
       Bucket: bucket,
       Delete: { Objects: keys.map((Key) => ({ Key })) },
+    })
+  );
+}
+
+/**
+ * Server-side copy (no download/upload round trip) — used by guest->account conversion to move
+ * a boilerplate out of the expiring "guest/" prefix into a persistent "project/" one.
+ */
+export async function copyProjectFiles(sourcePrefix: string, destPrefix: string): Promise<void> {
+  const r2 = getR2();
+  const bucket = getR2Bucket();
+
+  const keys: string[] = [];
+  let continuationToken: string | undefined;
+  do {
+    const page = await r2.send(
+      new ListObjectsV2Command({ Bucket: bucket, Prefix: `${sourcePrefix}/`, ContinuationToken: continuationToken })
+    );
+    for (const obj of page.Contents ?? []) {
+      if (obj.Key) keys.push(obj.Key);
+    }
+    continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  await Promise.all(
+    keys.map((key) => {
+      const destKey = `${destPrefix}/${key.slice(sourcePrefix.length + 1)}`;
+      return r2.send(
+        new CopyObjectCommand({
+          Bucket: bucket,
+          CopySource: encodeURIComponent(`${bucket}/${key}`),
+          Key: destKey,
+        })
+      );
     })
   );
 }

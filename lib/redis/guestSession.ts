@@ -32,8 +32,32 @@ export async function getOrCreateGuestSessionId(): Promise<string> {
   return id;
 }
 
+/** Reads the guest cookie without creating one — used where "no guest session" is a valid, distinct outcome. */
+export async function getGuestSessionIdIfExists(): Promise<string | null> {
+  const cookieStore = await cookies();
+  return cookieStore.get(COOKIE_NAME)?.value ?? null;
+}
+
 export async function readGuestSession(id: string): Promise<GuestSession | null> {
   return getRedis().get<GuestSession>(sessionKey(id));
+}
+
+function conversionLockKey(id: string): string {
+  return `guest:${id}:converting`;
+}
+
+/**
+ * Short-lived claim so two concurrent guest->account conversion attempts (e.g. a duplicate
+ * client request) can't both act on the same guest data and create two projects from it.
+ * Deliberately NOT a destructive read-and-delete of the session itself: conversion does real
+ * work (R2 copy, DB writes) after claiming, and if that work fails, the guest session must
+ * still be there — losing it on a transient Neon/R2 error would destroy the user's PRD/stack/
+ * boilerplate with no way to recover it. The lock just expires on its own (60s) if never
+ * explicitly needed again; nothing releases it early.
+ */
+export async function claimGuestSessionForConversion(id: string): Promise<boolean> {
+  const result = await getRedis().set(conversionLockKey(id), "1", { nx: true, ex: 60 });
+  return result === "OK";
 }
 
 /**
