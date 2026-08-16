@@ -58,6 +58,20 @@ export async function enforceGenerationCap(
 }
 
 /**
+ * Only decrements a key that's still alive — a plain DECR on an already-expired key would
+ * recreate it with no TTL (Redis creates on write), leaving a permanent counter behind that
+ * never resets on its normal 24h window. Guarding with EXISTS first, atomically via Lua, means
+ * a refund that lands after the original window has already lapsed is just a no-op instead of
+ * quietly resurrecting an eternal key.
+ */
+const REFUND_IF_EXISTS_SCRIPT = `
+if redis.call("EXISTS", KEYS[1]) == 1 then
+  return redis.call("DECR", KEYS[1])
+end
+return nil
+`;
+
+/**
  * Gives back a cap unit consumed by a submission that never got a real shot — a platform-side
  * failure (e.g. the sandbox validator's disk quota), not a bad generation. Deliberately not
  * called for ordinary generation failures (bad LLM output, a failed build check on legit
@@ -71,5 +85,6 @@ export async function refundGenerationCap(
   tier: UserTier = "guest"
 ): Promise<void> {
   if (!GENERATION_LIMITS[tier][stage]) return;
-  await getRedis().decr(`guest:${sessionId}:genCount:${stage}`);
+  const key = `guest:${sessionId}:genCount:${stage}`;
+  await getRedis().eval(REFUND_IF_EXISTS_SCRIPT, [key], []);
 }

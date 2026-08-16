@@ -21,7 +21,13 @@ const BodySchema = z
 
 export async function POST(request: Request) {
   const rawBody = await request.text();
-  const parsed = BodySchema.safeParse(rawBody ? JSON.parse(rawBody) : undefined);
+  let body: unknown;
+  try {
+    body = rawBody ? JSON.parse(rawBody) : undefined;
+  } catch {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+  const parsed = BodySchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request", details: parsed.error.flatten() }, { status: 400 });
   }
