@@ -97,12 +97,31 @@ export default function PreviewPage() {
       void dev.exit;
 
       instance.on("server-ready", (_port, url) => {
-        setState({ phase: "ready", url });
-        reportValidation(true);
-        idleTimerRef.current = setTimeout(() => {
-          void teardownWebContainer();
-          setState({ phase: "timedout" });
-        }, IDLE_TIMEOUT_MS);
+        // "server-ready" only means the dev server *process* started — Next.js compiles routes
+        // on demand, so a syntax/import error in app/page.tsx wouldn't surface until something
+        // actually requests "/", which previously happened only once the iframe below loaded
+        // (after verified:true had already been reported). Confirmed live: a job that passed
+        // the server-side syntax check (which can't catch import/module errors, only parse
+        // errors) still failed to compile once actually requested. Fetching the root route here
+        // first makes the report reflect what a real request finds, not just "the process
+        // launched." The iframe still renders either way — a failed check doesn't hide it, since
+        // Next's own dev error overlay in that iframe is the most useful thing the user can see.
+        void (async () => {
+          let verified = true;
+          try {
+            const check = await fetch(url);
+            verified = check.ok;
+          } catch {
+            // Inconclusive (proxy/network hiccup, not necessarily a real compile failure) —
+            // don't downgrade the report on this alone; the iframe is the real source of truth.
+          }
+          setState({ phase: "ready", url });
+          reportValidation(verified);
+          idleTimerRef.current = setTimeout(() => {
+            void teardownWebContainer();
+            setState({ phase: "timedout" });
+          }, IDLE_TIMEOUT_MS);
+        })();
       });
     } catch (err) {
       setState({ phase: "error", message: err instanceof Error ? err.message : "Preview failed to start." });

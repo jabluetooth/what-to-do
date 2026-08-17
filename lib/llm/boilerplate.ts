@@ -71,10 +71,28 @@ export async function POST(request: Request) {
 }
 
 async function generateHomePage(input: { prompt: string; sections: PrdSection[] }): Promise<string> {
+  const example = `export default function Home() {
+  return (
+    <main>
+      <section>
+        <h1>Trail Finder</h1>
+        <p>Discover and rate hiking trails near you.</p>
+      </section>
+      <section>
+        <h2>Features</h2>
+        <ul>
+          <li>Browse trails by difficulty and distance</li>
+          <li>Rate and review trails you've hiked</li>
+        </ul>
+      </section>
+    </main>
+  );
+}`;
+
   return generateCodeFile({
     model: MODEL_QUALITY,
     maxTokens: 600,
-    instructions: `${baseContext(input.prompt, input.sections)}\n\nWrite app/page.tsx as a real React Server Component (default export, no props) with static, app-specific content — a hero section and a short feature summary reflecting this exact app idea, not generic placeholder text. Do not import or call the database.`,
+    instructions: `${baseContext(input.prompt, input.sections)}\n\nWrite app/page.tsx as a real React Server Component with static, app-specific content — a hero section and a short feature summary reflecting this exact app idea, not generic placeholder text — following this exact pattern (adapt headings/content to the app, keep the same import style): no imports at all, not even from 'react' — JSX is compiled automatically by this project's build setup, and importing 'react', 'react/jsx-runtime', or named exports like 'jsx'/'Fragment' from either is both unnecessary and wrong here. Do not import or call the database.\n\n${example}`,
   });
 }
 
