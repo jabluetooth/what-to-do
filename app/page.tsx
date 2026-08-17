@@ -751,23 +751,29 @@ export default function Home() {
       <main className="flex-1 mx-auto w-full max-w-2xl px-6 pt-28 pb-16">
       {(state.phase === "idle" || state.phase === "submitting" || state.phase === "error") && (
         <>
-          <div className="relative mt-16 overflow-hidden pb-28 text-center">
-            {/* Decorative watermark: purely cosmetic, so it's not part of the a11y tree. Reserved
-                space below the real content (pb-28 above) is what it lives in — sized to roughly
-                fit the container's width rather than a fixed huge size, so it doesn't collide with
-                or dwarf the actual copy. Translated down by a quarter of its own height so
-                overflow-hidden above crops the last 1/4 — the mask then fades the visible 3/4
-                toward transparent as it approaches that crop line, instead of a hard edge. */}
-            <p
-              aria-hidden="true"
-              className="pointer-events-none absolute left-1/2 bottom-0 z-0 -translate-x-1/2 translate-y-1/4 select-none whitespace-nowrap text-[3.25rem] sm:text-[4.5rem] md:text-[5.5rem] font-extrabold tracking-tighter text-neutral-900/[0.05] dark:text-white/[0.045] blur-[2px]"
-              style={{
-                maskImage: "linear-gradient(to bottom, black 0%, black 55%, transparent 100%)",
-                WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 55%, transparent 100%)",
-              }}
-            >
-              WHAT TO DO?
-            </p>
+          <div className="relative mt-16 pb-28 text-center">
+            {/* Decorative watermark: purely cosmetic, so it's not part of the a11y tree. This
+                wrapper breaks out of the max-w-2xl column to span the full viewport width
+                (left-1/2 + -translate-x-1/2 + w-screen), clipped only vertically by its own
+                overflow-hidden — the outer hero div deliberately has none, or it would clip the
+                breakout right back down to its own narrow width. Font-size scales with viewport
+                width (clamp) so "WHAT TO DO?" reaches from edge to edge at any screen size.
+                Translated down by a quarter of its own height so overflow-hidden crops the last
+                1/4 — the mask then fades the visible 3/4 toward transparent as it approaches that
+                crop line, instead of a hard edge. */}
+            <div className="pointer-events-none absolute bottom-0 left-1/2 z-0 w-screen -translate-x-1/2 translate-y-1/4 overflow-hidden">
+              <p
+                aria-hidden="true"
+                className="select-none whitespace-nowrap text-center font-extrabold tracking-tighter text-neutral-900/[0.05] dark:text-white/[0.045] blur-[2px]"
+                style={{
+                  fontSize: "clamp(3rem, 14vw, 18rem)",
+                  maskImage: "linear-gradient(to bottom, black 0%, black 55%, transparent 100%)",
+                  WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 55%, transparent 100%)",
+                }}
+              >
+                WHAT TO DO?
+              </p>
+            </div>
 
             <div className="relative z-10">
               <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
@@ -777,7 +783,7 @@ export default function Home() {
               <h2 className="mt-3 text-4xl sm:text-5xl font-bold tracking-tight">
                 <TextScramble text={idea ? idea.title : PLACEHOLDER_TITLE} play={scrambleKey} loading={ideaLoading} />
               </h2>
-              <p className="mt-3 text-base sm:text-lg text-neutral-500 dark:text-neutral-400">
+              <p className="mt-3 text-sm sm:text-base text-neutral-500 dark:text-neutral-400">
                 <TextScramble
                   text={idea ? idea.targetUser : PLACEHOLDER_TARGET}
                   play={scrambleKey}
