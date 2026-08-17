@@ -142,7 +142,7 @@ function TextScramble({
     <span className={className}>
       {prefix && (
         <span
-          className={`inline-block overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-500 ease-out ${
+          className={`inline-block overflow-hidden whitespace-nowrap font-mono transition-[max-width,opacity] duration-500 ease-out ${
             hidePrefix ? "max-w-0 opacity-0" : "max-w-[20ch] opacity-100"
           }`}
         >
@@ -153,7 +153,9 @@ function TextScramble({
           scrambled portion's own rendered width never fluctuates between random draws — without
           this, a proportional font visibly shifts any static text sharing its line (e.g. the
           "Generate one at " prefix) left/right as the scramble cycles through different-width
-          characters. */}
+          characters. The prefix is also font-mono for the same reason it's here at all: mixing
+          two different font families inline never shares a baseline/cap-height, which read as
+          the scrambled text floating noticeably higher than the prefix next to it. */}
       <span aria-hidden="true" className="font-mono">
         {display}
       </span>
