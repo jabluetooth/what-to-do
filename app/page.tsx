@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import Link from "next/link";
 import { signIn } from "next-auth/react";
 import type { PlatformHint, PrdSection, RandomIdea, ScopeSizeHint, StackCategory, StackRecommendation } from "@/lib/types";
 import { STACK_ALTERNATIVES } from "@/lib/pipeline/stackMatrix";
@@ -52,6 +53,48 @@ type FlowState =
       hasBoilerplate: boolean;
     }
   | { phase: "error"; message: string };
+
+const ABOUT_STEPS = [
+  {
+    title: "Start with an idea",
+    body: "Describe your own, or generate a random one to get unstuck.",
+  },
+  {
+    title: "Get a PRD",
+    body: "A scoped product spec — problem, target user, MVP features — generated in seconds, editable section by section.",
+  },
+  {
+    title: "Pick a tech stack",
+    body: "A curated recommendation, not a black box — override any piece if you already know what you want.",
+  },
+  {
+    title: "Generate boilerplate & preview it live",
+    body: "Scaffolded code from your stack, running in-browser via WebContainers before you download it.",
+  },
+];
+
+const FAQ_ITEMS = [
+  {
+    q: "Do I need to sign up?",
+    a: "No. The whole flow — idea, PRD, tech stack, boilerplate, live preview — works as a guest. Sign in with GitHub only if you want to keep a project past your guest session, or push the generated code straight to a new repo.",
+  },
+  {
+    q: "How long does my guest session last?",
+    a: "Guest work is kept for a limited time and purged automatically after inactivity. Sign in before it expires to keep it.",
+  },
+  {
+    q: "Can I push the generated code to GitHub?",
+    a: "Yes, optionally. Sign in, grant repo access from your account page, and turn on auto-push — a private repo is created the next time you save a project.",
+  },
+  {
+    q: "Is the generated boilerplate actually tested?",
+    a: "It's checked for syntax errors automatically. Opening the live preview goes further, actually installing and running it in-browser so you can confirm it builds before downloading.",
+  },
+  {
+    q: "Is there a limit to how many times I can generate?",
+    a: "Yes, a small daily cap per stage to keep things fair on a free tier — signing in raises the limit.",
+  },
+];
 
 const STACK_CATEGORIES: { key: StackCategory; label: string }[] = [
   { key: "frontend", label: "Frontend" },
@@ -585,11 +628,44 @@ export default function Home() {
   const isSubmitting = state.phase === "submitting" || (state.phase === "clarifying" && state.submitting);
 
   return (
-    <main className="flex-1 mx-auto w-full max-w-2xl px-6 py-16">
-      <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
-        What To Do?
-      </p>
+    <>
+      <nav
+        aria-label="Main"
+        className="fixed top-0 left-0 right-0 z-50 flex justify-center pb-6 pt-[calc(1.5rem+env(safe-area-inset-top))] pointer-events-none"
+      >
+        <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-neutral-200 dark:border-white/10 bg-white/80 dark:bg-neutral-900/70 backdrop-blur-xl shadow-lg p-1.5">
+          <Link
+            href="/"
+            className="rounded-full px-4 py-2 text-sm font-extrabold tracking-tighter hover:bg-neutral-100 dark:hover:bg-white/10"
+          >
+            WTD
+          </Link>
+          <div className="hidden sm:block h-4 w-px bg-neutral-200 dark:bg-white/10 mx-1" />
+          <div className="hidden sm:flex items-center gap-1">
+            <a
+              href="#about"
+              className="rounded-full px-3.5 py-2 text-sm font-medium text-neutral-500 dark:text-neutral-400 transition-colors hover:bg-neutral-100 dark:hover:bg-white/10 hover:text-neutral-900 dark:hover:text-white"
+            >
+              About
+            </a>
+            <a
+              href="#faq"
+              className="rounded-full px-3.5 py-2 text-sm font-medium text-neutral-500 dark:text-neutral-400 transition-colors hover:bg-neutral-100 dark:hover:bg-white/10 hover:text-neutral-900 dark:hover:text-white"
+            >
+              FAQ
+            </a>
+          </div>
+          <div className="h-4 w-px bg-neutral-200 dark:bg-white/10 mx-1" />
+          <Link
+            href="/account"
+            className="rounded-full bg-neutral-900 dark:bg-white px-4 py-2 text-sm font-bold text-white dark:text-neutral-900 transition-colors hover:bg-neutral-700 dark:hover:bg-neutral-200"
+          >
+            Sign in
+          </Link>
+        </div>
+      </nav>
 
+      <main className="flex-1 mx-auto w-full max-w-2xl px-6 pt-28 pb-16">
       {(state.phase === "idle" || state.phase === "submitting" || state.phase === "error") && (
         <>
           <div className="mt-10">
@@ -1296,6 +1372,79 @@ export default function Home() {
           </button>
         </div>
       )}
-    </main>
+      </main>
+
+      <section id="about" className="mx-auto w-full max-w-2xl px-6 py-20 border-t border-neutral-200 dark:border-neutral-800">
+        <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">About</p>
+        <h2 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight">From a blank page to a running project</h2>
+        <p className="mt-3 text-neutral-600 dark:text-neutral-400 max-w-prose">
+          What To Do? turns a single idea into something you can actually run — no account required to try it.
+        </p>
+
+        <ol className="mt-8 space-y-6">
+          {ABOUT_STEPS.map((step, i) => (
+            <li key={step.title} className="flex gap-4">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-sm font-semibold">
+                {i + 1}
+              </span>
+              <div>
+                <p className="font-medium">{step.title}</p>
+                <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">{step.body}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section id="faq" className="mx-auto w-full max-w-2xl px-6 py-20 border-t border-neutral-200 dark:border-neutral-800">
+        <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">FAQ</p>
+        <h2 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight">Frequently asked questions</h2>
+
+        <dl className="mt-8 space-y-6">
+          {FAQ_ITEMS.map((item) => (
+            <div key={item.q}>
+              <dt className="font-medium">{item.q}</dt>
+              <dd className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">{item.a}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      <footer className="mx-auto w-full max-w-2xl px-6 pt-12 pb-16 border-t border-neutral-200 dark:border-neutral-800">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-8">
+          <div>
+            <p className="text-sm font-extrabold tracking-tighter">WTD</p>
+            <p className="mt-2 max-w-xs text-sm text-neutral-500 dark:text-neutral-400">
+              From an idea to a scoped, scaffolded, running project in one prompt.
+            </p>
+          </div>
+          <div className="flex gap-10 text-sm">
+            <div className="space-y-2">
+              <a
+                href="#about"
+                className="block text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+              >
+                About
+              </a>
+              <a
+                href="#faq"
+                className="block text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+              >
+                FAQ
+              </a>
+            </div>
+            <div className="space-y-2">
+              <Link
+                href="/account"
+                className="block text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+              >
+                Account
+              </Link>
+            </div>
+          </div>
+        </div>
+        <p className="mt-10 text-xs text-neutral-400 dark:text-neutral-600">© 2026 What To Do?</p>
+      </footer>
+    </>
   );
 }
