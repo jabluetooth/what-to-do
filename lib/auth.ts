@@ -4,7 +4,7 @@ import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { getDb } from "@/lib/db/client";
 import { users, accounts, sessions, verificationTokens } from "@/lib/db/schema";
 import { requireEnv } from "@/lib/env";
-import { upsertGithubConnection } from "@/lib/github/connection";
+import { upsertGithubConnection, hasRepoScope } from "@/lib/github/connection";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: DrizzleAdapter(getDb(), {
@@ -43,14 +43,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user, account, profile }) {
       if (user) token.sub = user.id;
 
-      if (account?.provider === "github" && account.access_token && account.scope?.includes("repo")) {
+      if (account?.provider === "github" && account.access_token && hasRepoScope(account.scope)) {
         const login = typeof profile?.login === "string" ? profile.login : "unknown";
-        await upsertGithubConnection({
-          userId: token.sub!,
-          githubLogin: login,
-          accessToken: account.access_token,
-          scope: account.scope,
-        });
+        try {
+          await upsertGithubConnection({
+            userId: token.sub!,
+            githubLogin: login,
+            accessToken: account.access_token,
+            // hasRepoScope() only returns true for a defined, non-empty scope string.
+            scope: account.scope!,
+          });
+        } catch (err) {
+          // Must not fail sign-in over this: GitHub has already granted the repo scope by this
+          // point regardless, so failing here would only cost the user a successful sign-in
+          // without undoing that grant — worse than signing them in with auto-push just staying
+          // off. A misconfigured GITHUB_TOKEN_ENCRYPTION_KEY or a transient Neon blip both land
+          // here; both are recoverable by re-connecting from /account, not by blocking sign-in.
+          console.error("[auth] failed to persist github connection (sign-in still proceeds):", err);
+        }
       }
 
       return token;

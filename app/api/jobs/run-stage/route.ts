@@ -1,7 +1,10 @@
 import { NextResponse, after } from "next/server";
+import { z } from "zod";
 import { Receiver } from "@upstash/qstash";
 import { runBoilerplateJob } from "@/lib/pipeline/boilerplateWorker";
 import { requireEnv } from "@/lib/env";
+
+const BodySchema = z.object({ jobId: z.string().min(1) });
 
 export const runtime = "nodejs";
 // Generous ceiling for the interim local-subprocess validator (see lib/sandbox/validate.ts) —
@@ -42,7 +45,17 @@ export async function POST(request: Request) {
     }
   }
 
-  const { jobId } = JSON.parse(body) as { jobId: string };
+  let parsedBody: unknown;
+  try {
+    parsedBody = body ? JSON.parse(body) : undefined;
+  } catch {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+  const parsed = BodySchema.safeParse(parsedBody);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid request", details: parsed.error.flatten() }, { status: 400 });
+  }
+  const { jobId } = parsed.data;
 
   // Run after responding: the interim local validator can take minutes, far longer than QStash's
   // delivery timeout would tolerate if we blocked the response on it.

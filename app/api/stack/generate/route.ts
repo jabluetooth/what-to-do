@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getOrInitGuestSession, writeGuestSession } from "@/lib/redis/guestSession";
-import { enforceGenerationCap, RateLimitExceededError } from "@/lib/redis/rateLimit";
+import { enforceGenerationCap, refundGenerationCap, RateLimitExceededError } from "@/lib/redis/rateLimit";
 import { pickStack } from "@/lib/pipeline/stackMatrix";
 import { generateStackRationale } from "@/lib/llm/stack";
 import { markBoilerplateStaleIfPresent } from "@/lib/pipeline/staleness";
@@ -66,6 +66,10 @@ export async function POST(request: Request) {
       picks,
     });
   } catch {
+    // Not the user's fault — a platform-side failure (Groq down/rate-limited) shouldn't burn
+    // the same limited quota as an actual attempt. Matches the boilerplate worker's existing
+    // refund-on-platform-failure policy, which this route hadn't been applying.
+    await refundGenerationCap(sessionId, "stack");
     return NextResponse.json(
       { error: "Couldn't generate stack rationale right now. Please try again in a moment." },
       { status: 502 }

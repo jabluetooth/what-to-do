@@ -1,8 +1,15 @@
+import { revalidatePath } from "next/cache";
 import { auth, signIn, signOut } from "@/lib/auth";
 import { getDb } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { getGithubConnection, deleteGithubConnection, setAutoPushToGithub } from "@/lib/github/connection";
+import { getGithubConnectionStatus, disconnectGithub, setAutoPushToGithub } from "@/lib/github/connection";
+import { getLatestGithubPushResult } from "@/lib/github/pushBoilerplate";
+
+const buttonClass =
+  "rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium disabled:opacity-50";
+const secondaryButtonClass =
+  "rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium";
 
 /**
  * Started as a Slice 7 sign-in smoke test; now also the one settings surface signed-in users
@@ -15,78 +22,113 @@ export default async function AccountPage() {
 
   if (!session?.user?.id) {
     return (
-      <main style={{ maxWidth: 480, margin: "4rem auto", padding: "0 1.5rem", fontFamily: "sans-serif" }}>
-        <h1>Account</h1>
+      <main className="max-w-lg mx-auto mt-16 px-6">
+        <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
         <form
+          className="mt-6"
           action={async () => {
             "use server";
             await signIn("github", { redirectTo: "/account" });
           }}
         >
-          <button type="submit">Sign in with GitHub</button>
+          <button type="submit" className={buttonClass}>
+            Sign in with GitHub
+          </button>
         </form>
       </main>
     );
   }
 
   const userId = session.user.id;
-  const [userRow] = await getDb().select({ autoPushToGithub: users.autoPushToGithub }).from(users).where(eq(users.id, userId)).limit(1);
-  const connection = await getGithubConnection(userId);
+  const [userRow] = await getDb()
+    .select({ autoPushToGithub: users.autoPushToGithub })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const connection = await getGithubConnectionStatus(userId);
   const autoPushToGithub = userRow?.autoPushToGithub ?? false;
+  const lastPush = await getLatestGithubPushResult(userId);
+
+  // Explicit absolute assignments, not a toggle: negating a render-time snapshot meant a stale
+  // page (two tabs open, a bfcache restore) could invert the *opposite* of what the user
+  // intended. Setting to an explicit true/false is idempotent — a stale render can show the
+  // wrong label, but clicking it can never flip the setting to something the user didn't ask
+  // for, just possibly re-assert what's already there.
+  async function enableAutoPush() {
+    "use server";
+    await setAutoPushToGithub(userId, true);
+    revalidatePath("/account");
+  }
+  async function disableAutoPush() {
+    "use server";
+    await setAutoPushToGithub(userId, false);
+    revalidatePath("/account");
+  }
 
   return (
-    <main style={{ maxWidth: 480, margin: "4rem auto", padding: "0 1.5rem", fontFamily: "sans-serif" }}>
-      <h1>Account</h1>
-      <p>
+    <main className="max-w-lg mx-auto mt-16 px-6 pb-16">
+      <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
+      <p className="mt-2 text-sm">
         Signed in as <strong>{session.user.email ?? session.user.name}</strong>
       </p>
-      <p style={{ fontSize: "0.85rem", color: "#666" }}>User ID: {session.user.id}</p>
+      <p className="text-xs text-neutral-500 dark:text-neutral-400">User ID: {session.user.id}</p>
       <form
+        className="mt-3"
         action={async () => {
           "use server";
           await signOut({ redirectTo: "/account" });
         }}
       >
-        <button type="submit">Sign out</button>
+        <button type="submit" className={secondaryButtonClass}>
+          Sign out
+        </button>
       </form>
 
-      <hr style={{ margin: "2rem 0" }} />
+      <hr className="my-8 border-neutral-200 dark:border-neutral-800" />
 
-      <h2 style={{ fontSize: "1.1rem" }}>GitHub repo push</h2>
-      <p style={{ fontSize: "0.9rem", color: "#666" }}>
+      <h2 className="text-lg font-semibold">GitHub repo push</h2>
+      <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
         When enabled, a new GitHub repo is created automatically from your boilerplate the next time you sign up
         from a guest session.
       </p>
 
       {connection ? (
-        <>
-          <p style={{ fontSize: "0.9rem" }}>
-            Connected as <strong>{connection.githubLogin}</strong> (repo access granted).
-          </p>
+        <div className="mt-4 space-y-3">
+          {connection.usable ? (
+            <p className="text-sm">
+              Connected as <strong>{connection.githubLogin}</strong> (repo access granted).
+            </p>
+          ) : (
+            <p className="text-sm text-amber-700 dark:text-amber-400">
+              Your GitHub connection needs to be re-established (couldn&apos;t verify it&apos;s still valid) —
+              disconnect below, then reconnect.
+            </p>
+          )}
 
-          <form
-            action={async () => {
-              "use server";
-              await setAutoPushToGithub(userId, !autoPushToGithub);
-            }}
-          >
-            <button type="submit">{autoPushToGithub ? "Turn off auto-push" : "Turn on auto-push"}</button>
-          </form>
+          <div className="flex flex-wrap gap-2">
+            <form action={autoPushToGithub ? disableAutoPush : enableAutoPush}>
+              <button type="submit" disabled={!connection.usable} className={secondaryButtonClass}>
+                {autoPushToGithub ? "Turn off auto-push" : "Turn on auto-push"}
+              </button>
+            </form>
 
-          <form
-            action={async () => {
-              "use server";
-              await deleteGithubConnection(userId);
-              await setAutoPushToGithub(userId, false);
-            }}
-          >
-            <button type="submit" style={{ marginTop: "0.5rem" }}>
-              Disconnect GitHub
-            </button>
-          </form>
-        </>
+            <form
+              action={async () => {
+                "use server";
+                await disconnectGithub(userId);
+                await setAutoPushToGithub(userId, false);
+                revalidatePath("/account");
+              }}
+            >
+              <button type="submit" className={secondaryButtonClass}>
+                Disconnect GitHub
+              </button>
+            </form>
+          </div>
+        </div>
       ) : (
         <form
+          className="mt-4"
           action={async () => {
             "use server";
             // A distinct re-authorization requesting the additional "repo" scope — GitHub shows
@@ -98,8 +140,25 @@ export default async function AccountPage() {
             await signIn("github", { redirectTo: "/account" }, { scope: "read:user user:email repo" });
           }}
         >
-          <button type="submit">Connect GitHub for repo access</button>
+          <button type="submit" className={buttonClass}>
+            Connect GitHub for repo access
+          </button>
         </form>
+      )}
+
+      {lastPush && (
+        <div className="mt-4 rounded-md border border-neutral-200 dark:border-neutral-800 p-3 text-sm">
+          <p className="font-medium">Last push</p>
+          {lastPush.repoUrl ? (
+            <p className="mt-1">
+              <a href={lastPush.repoUrl} target="_blank" rel="noopener noreferrer" className="underline">
+                {lastPush.repoUrl}
+              </a>
+            </p>
+          ) : (
+            <p className="mt-1 text-red-600 dark:text-red-400">Failed: {lastPush.error}</p>
+          )}
+        </div>
       )}
     </main>
   );

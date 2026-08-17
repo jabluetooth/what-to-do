@@ -1,11 +1,45 @@
-import { eq } from "drizzle-orm";
+import { eq, and, or, isNotNull, desc } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { users, boilerplateVersions } from "@/lib/db/schema";
-import { getGithubConnection } from "@/lib/github/connection";
+import { users, boilerplateVersions, projects } from "@/lib/db/schema";
+import { getGithubConnection, hasRepoScope } from "@/lib/github/connection";
 import { createRepo, pushFiles, GithubApiError } from "@/lib/github/client";
 import { listProjectFiles } from "@/lib/pipeline/projectFiles";
 
 const MAX_ERROR_CHARS = 500;
+
+export interface LatestGithubPushResult {
+  repoUrl: string | null;
+  error: string | null;
+  createdAt: Date;
+}
+
+/**
+ * githubRepoUrl/githubPushError were being written on every auto-push attempt and read nowhere
+ * — a user who opts in had no way to find out a repo was actually created (or that it failed)
+ * short of checking their own GitHub account or querying Postgres directly. Surfaced on
+ * /account as "last push" status; only the most recent attempt across all of a user's projects,
+ * since there's no project dashboard yet to show a per-project history.
+ */
+export async function getLatestGithubPushResult(userId: string): Promise<LatestGithubPushResult | null> {
+  const db = getDb();
+  const [row] = await db
+    .select({
+      repoUrl: boilerplateVersions.githubRepoUrl,
+      error: boilerplateVersions.githubPushError,
+      createdAt: boilerplateVersions.createdAt,
+    })
+    .from(boilerplateVersions)
+    .innerJoin(projects, eq(boilerplateVersions.projectId, projects.id))
+    .where(
+      and(
+        eq(projects.userId, userId),
+        or(isNotNull(boilerplateVersions.githubRepoUrl), isNotNull(boilerplateVersions.githubPushError))
+      )
+    )
+    .orderBy(desc(boilerplateVersions.createdAt))
+    .limit(1);
+  return row ?? null;
+}
 
 function slugify(text: string): string {
   const slug = text
@@ -42,6 +76,12 @@ export async function maybeAutoPushBoilerplate(input: {
 
     const connection = await getGithubConnection(input.userId);
     if (!connection) return;
+    // Defense in depth: the app only ever requests exactly "repo" today, so this should always
+    // be true if a connection row exists at all — but if GitHub ever returns a narrower grant
+    // (an org policy, an app-level restriction), createRepo would otherwise fail with a 403 that
+    // only ever surfaces in the write-only githubPushError column. Checking first fails the same
+    // way but for a reason a user re-reading their connection status could actually diagnose.
+    if (!hasRepoScope(connection.scope)) return;
 
     const files = await listProjectFiles(input.r2Prefix);
     const repoName = `whattodo-${slugify(input.prompt)}`;

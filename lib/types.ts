@@ -59,14 +59,18 @@ export interface GuestSession {
    */
   boilerplateWebContainerCompatible?: boolean;
   /**
-   * Whether a real install+dev-server boot has actually confirmed this boilerplate works — set
-   * only for WebContainer-compatible boilerplates, by /preview/[ref] reporting back its boot
-   * result (see app/api/preview/report-validation/route.ts). Undefined until that's happened at
-   * least once. Distinct from job success: a job only ever confirms the generated code is
-   * syntactically valid (lib/sandbox/validateSyntax.ts) — the server no longer attempts a real
-   * install+build itself, since that reliably exhausted free-tier serverless disk quotas
-   * (ENOSPC), confirmed live in production. This field is what "actually builds and runs" now
-   * means, and it's earned lazily, client-side, the first time someone opens the preview.
+   * Client-reported, NOT server-verified — set only for WebContainer-compatible boilerplates, by
+   * /preview/[ref] reporting back its own boot result (see
+   * app/api/preview/report-validation/route.ts). Undefined until that's happened at least once.
+   * The route checks the report is about the session's *current* boilerplate (not a stale one
+   * from a prior generation) but has no way to confirm the client is telling the truth about
+   * what its own WebContainer actually did — never gate anything security- or
+   * payment-sensitive on this, it's a display-only confidence signal. Distinct from job success:
+   * a job only ever confirms the generated code is syntactically valid
+   * (lib/sandbox/validateSyntax.ts) — the server no longer attempts a real install+build itself,
+   * since that reliably exhausted free-tier serverless disk quotas (ENOSPC), confirmed live in
+   * production. This field is what "actually builds and runs" now means, and it's earned lazily,
+   * client-side, the first time someone opens the preview.
    */
   boilerplateBuildVerified?: boolean;
   currentStage: PipelineStage;

@@ -124,10 +124,11 @@ export const stackVersions = pgTable("stack_version", {
 });
 
 /**
- * No validationStatus column yet: a guest session only ever holds a boilerplateR2Prefix once
- * install+build validation already succeeded (see lib/pipeline/boilerplateWorker.ts), so every
- * converted row is implicitly "succeeded". A status enum becomes meaningful once Slice 9+
- * tracks in-progress/failed generations for signed-in users too.
+ * No validationStatus column yet: a guest session only ever holds a boilerplateR2Prefix once its
+ * (syntax-only, not a real install+build — see lib/sandbox/validateSyntax.ts) check already
+ * succeeded (see lib/pipeline/boilerplateWorker.ts), so every converted row is implicitly
+ * "succeeded" at that tier. A status enum becomes meaningful once Slice 9+ tracks in-progress/
+ * failed generations for signed-in users too.
  */
 export const boilerplateVersions = pgTable("boilerplate_version", {
   id: text("id")

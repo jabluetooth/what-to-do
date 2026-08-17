@@ -77,6 +77,10 @@ export default function Home() {
   // the FastAPI path) — distinct from webContainerCompatible, which is about live preview, not
   // whether validation actually ran.
   const [boilerplateUnvalidated, setBoilerplateUnvalidated] = useState(false);
+  // Upgrades the "syntax-checked" message to "verified" once /preview/[ref] reports back a real
+  // install+build success (see the session poll below) — client-reported, display-only, see
+  // lib/types.ts's boilerplateBuildVerified doc comment.
+  const [boilerplateBuildVerified, setBoilerplateBuildVerified] = useState(false);
 
   const [sessionTtlSeconds, setSessionTtlSeconds] = useState<number | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -102,6 +106,12 @@ export default function Home() {
   });
 
   const hasProject = state.phase === "result";
+  // Converting to an account while a boilerplate job is still running deletes the guest session
+  // out from under it: the job later finishes and recreates that session key with the boilerplate
+  // in it, but the project it belonged to is already converted — an orphan nothing ever picks
+  // up. Disabling sign-up during this window is cheaper and more honest than trying to reconcile
+  // a race after the fact.
+  const boilerplateJobActive = boilerplateJobState === "pending" || boilerplateJobState === "running";
 
   // Polls the session's remaining inactivity-timeout TTL to drive the warning banner —
   // only once a project actually exists, so an idle visitor with nothing to lose isn't polled.
@@ -114,7 +124,10 @@ export default function Home() {
       try {
         const res = await fetch("/api/guest/session");
         const data = await res.json();
-        if (!cancelled && res.ok) setSessionTtlSeconds(data.ttlSeconds);
+        if (!cancelled && res.ok) {
+          setSessionTtlSeconds(data.ttlSeconds);
+          setBoilerplateBuildVerified(Boolean(data.boilerplateBuildVerified));
+        }
       } catch {
         // transient — the next scheduled poll will retry
       }
@@ -260,6 +273,9 @@ export default function Home() {
     setBoilerplateMessage("");
     setBoilerplateError(null);
     setBoilerplateStale(false);
+    setBoilerplateWebContainerCompatible(null);
+    setBoilerplateUnvalidated(false);
+    setBoilerplateBuildVerified(false);
     setSessionTtlSeconds(null);
     setShowExitConfirm(false);
   }
@@ -282,6 +298,9 @@ export default function Home() {
   }
 
   function handleSignUpClick() {
+    // Defensive: disabled buttons don't fire onClick, but this guards any other call site too —
+    // converting while a boilerplate job is still running would orphan it (see boilerplateJobActive).
+    if (boilerplateJobActive) return;
     signingInRef.current = true;
     signIn("github", { redirectTo: "/" });
   }
@@ -464,6 +483,7 @@ export default function Home() {
     setBoilerplateMessage("Queued");
     setBoilerplateWebContainerCompatible(null);
     setBoilerplateUnvalidated(false);
+    setBoilerplateBuildVerified(false);
     try {
       const res = await fetch("/api/boilerplate/generate", { method: "POST" });
       const data = await res.json();
@@ -721,7 +741,9 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={handleSignUpClick}
-                  className="text-xs font-medium underline"
+                  disabled={boilerplateJobActive}
+                  title={boilerplateJobActive ? "Wait for boilerplate generation to finish first" : undefined}
+                  className="text-xs font-medium underline disabled:no-underline disabled:opacity-50"
                 >
                   Sign up to save
                 </button>
@@ -730,9 +752,16 @@ export default function Home() {
           ) : (
             <p className="text-xs text-neutral-500">
               Guest session — your work isn&apos;t saved.{" "}
-              <button type="button" onClick={handleSignUpClick} className="underline">
+              <button
+                type="button"
+                onClick={handleSignUpClick}
+                disabled={boilerplateJobActive}
+                title={boilerplateJobActive ? "Wait for boilerplate generation to finish first" : undefined}
+                className="underline disabled:no-underline disabled:opacity-50"
+              >
                 Sign up to save
               </button>
+              {boilerplateJobActive && " (available once boilerplate generation finishes)"}
             </p>
           )}
 
@@ -1038,7 +1067,9 @@ export default function Home() {
                         ? "Boilerplate generated — no Python interpreter was available to check it, review before running."
                         : boilerplateWebContainerCompatible === false
                           ? "Boilerplate generated (Python syntax checked)."
-                          : "Boilerplate generated (syntax-checked) — open Live Preview to confirm it actually builds and runs."}
+                          : boilerplateBuildVerified
+                            ? "Boilerplate generated and verified — Live Preview confirmed it builds and runs."
+                            : "Boilerplate generated (syntax-checked) — open Live Preview to confirm it actually builds and runs."}
                     </p>
                     <a
                       href="/api/boilerplate/download"
@@ -1088,11 +1119,17 @@ export default function Home() {
           ) : (
             <div className="rounded-md border border-neutral-300 dark:border-neutral-700 p-4 space-y-2">
               <p className="text-sm font-medium">Sign up to save this project before starting over?</p>
+              {boilerplateJobActive && (
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  Boilerplate is still generating — sign-up isn&apos;t available until it finishes.
+                </p>
+              )}
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={handleSignUpClick}
-                  className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium"
+                  disabled={boilerplateJobActive}
+                  className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
                 >
                   Sign up to save
                 </button>

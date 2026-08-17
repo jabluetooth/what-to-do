@@ -28,7 +28,7 @@ export interface TemplateImplementation {
     input: { prompt: string; sections: PrdSection[] },
     onProgress: (progress: number, message: string) => Promise<void>
   ): Promise<TemplateFile[]>;
-  /** Runs whatever install/build/syntax check makes sense for this template; see validate.ts for why this differs so much between templates (real install+build for JS, syntax-only for Python). */
+  /** Runs whatever check makes sense for this template — both are syntax-only now (no real install/build), see validateSyntax.ts and validate.ts for why. */
   validate(files: TemplateFile[], onPhase: (phase: "install" | "build") => void | Promise<void>): Promise<ValidationResult>;
 }
 

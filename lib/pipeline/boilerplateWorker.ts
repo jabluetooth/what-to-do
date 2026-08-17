@@ -19,10 +19,12 @@ async function runValidation(impl: TemplateImplementation, files: TemplateFile[]
 }
 
 /**
- * The actual pipeline: template select -> LLM fill-in -> write files -> install -> build check.
- * A job only counts as "succeeded" once the build check passes (PRD §10 risk: LLM-generated
- * fill-in on top of templates carries hallucination risk — bad imports, mismatched versions —
- * so this is required, not optional).
+ * The actual pipeline: template select -> LLM fill-in -> write files -> validate. A job only
+ * counts as "succeeded" once that check passes (PRD §10 risk: LLM-generated fill-in on top of
+ * templates carries hallucination risk — bad imports, mismatched versions — so this is
+ * required, not optional). The check itself is syntax-only now, not a real install+build (see
+ * lib/sandbox/validateSyntax.ts) — it catches malformed code but not import/type errors; the
+ * deeper check happens client-side, lazily, if/when the user opens the live preview.
  */
 export async function runBoilerplateJob(jobId: string): Promise<void> {
   // QStash is at-least-once delivery and run-stage responds before this finishes, so a
