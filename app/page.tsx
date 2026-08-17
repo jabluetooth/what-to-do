@@ -14,6 +14,29 @@ function formatDuration(totalSeconds: number): string {
   return `${minutes}m ${seconds}s`;
 }
 
+// Purely cosmetic filler cycled through while a real idea is in flight — never sent anywhere,
+// never shown as a real result. Landing on the actual title/targetUser happens the instant the
+// request resolves, since the shuffle only runs while ideaLoading is true (see useShuffle below).
+const SHUFFLE_TITLES = [
+  "Fetchly", "Looply", "Nomly", "Driftbox", "Pinlist", "Scoutly",
+  "Huddle", "Ledgerly", "Snaplog", "Tally", "Wanderly", "Rootcheck",
+];
+const SHUFFLE_TARGETS = [
+  "for busy freelancers", "for weekend hackers", "for remote teams", "for pet owners",
+  "for indie makers", "for students", "for small shop owners", "for night-shift workers",
+];
+
+/** Cycles through `words` on a fixed interval while `active`, freezing on the last one once not. */
+function useShuffle(active: boolean, words: string[], intervalMs: number): string {
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setIndex((n) => (n + 1) % words.length), intervalMs);
+    return () => clearInterval(id);
+  }, [active, words, intervalMs]);
+  return words[index];
+}
+
 type FlowState =
   | { phase: "idle" }
   | { phase: "submitting" }
@@ -49,6 +72,11 @@ export default function Home() {
   const [idea, setIdea] = useState<RandomIdea | null>(null);
   const [ideaLoading, setIdeaLoading] = useState(false);
   const [ideaError, setIdeaError] = useState<string | null>(null);
+  // The manual prompt form is collapsed behind this by default — the landing page's primary path
+  // is the random idea generator, not typing a prompt.
+  const [showManualForm, setShowManualForm] = useState(false);
+  const shuffledTitle = useShuffle(ideaLoading, SHUFFLE_TITLES, 90);
+  const shuffledTarget = useShuffle(ideaLoading, SHUFFLE_TARGETS, 130);
 
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [draftContent, setDraftContent] = useState("");
@@ -201,16 +229,15 @@ export default function Home() {
     };
   }, []);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!prompt.trim()) return;
+  async function submitPrompt(promptText: string, hintOverrides?: Partial<ReturnType<typeof hints>>) {
+    if (!promptText.trim()) return;
 
     setState({ phase: "submitting" });
     try {
       const res = await fetch("/api/prompt/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, hints: hints() }),
+        body: JSON.stringify({ prompt: promptText, hints: { ...hints(), ...hintOverrides } }),
       });
       const data = await res.json();
 
@@ -228,6 +255,21 @@ export default function Home() {
     } catch {
       setState({ phase: "error", message: "Network error — please try again." });
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await submitPrompt(prompt);
+  }
+
+  // The hero's "Generate PRD" action from a random idea — passes the platform hint explicitly
+  // rather than relying on setPlatform() having landed before this reads it (same render tick).
+  async function startPrdFromIdea() {
+    if (!idea) return;
+    const promptText = `${idea.title} (${idea.targetUser}): ${idea.description}`;
+    setPrompt(promptText);
+    setPlatform(idea.platformTag);
+    await submitPrompt(promptText, { platform: idea.platformTag });
   }
 
   async function handleClarify(e: React.FormEvent) {
@@ -257,6 +299,9 @@ export default function Home() {
   function startOver() {
     setPrompt("");
     setAnswer("");
+    setIdea(null);
+    setIdeaError(null);
+    setShowManualForm(false);
     setState({ phase: "idle" });
     setEditingKey(null);
     setDraftContent("");
@@ -537,160 +582,191 @@ export default function Home() {
     }
   }
 
-  // "Use this idea" only populates the prompt — it never starts the pipeline by itself (PRD §6.1.1).
-  function useIdea() {
-    if (!idea) return;
-    setPrompt(`${idea.title}: ${idea.description}`);
-    setPlatform(idea.platformTag);
-    setIdea(null);
-    setIdeaError(null);
-  }
-
   const isSubmitting = state.phase === "submitting" || (state.phase === "clarifying" && state.submitting);
 
   return (
     <main className="flex-1 mx-auto w-full max-w-2xl px-6 py-16">
-      <h1 className="text-3xl font-semibold tracking-tight">What To Do?</h1>
-      <p className="mt-2 text-neutral-600 dark:text-neutral-400">
-        Describe an app idea. Get a PRD, a tech stack, a boilerplate, and a live preview from one prompt.
+      <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
+        What To Do?
       </p>
 
       {(state.phase === "idle" || state.phase === "submitting" || state.phase === "error") && (
-        <div className="mt-8 rounded-md border border-neutral-300 dark:border-neutral-700 p-4">
-          <p className="text-sm font-medium">Stuck on thinking what to do?</p>
+        <>
+          <div className="mt-10">
+            <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
+              {idea || ideaLoading ? "Your next app" : "Stuck on what to build?"}
+            </p>
 
-          {!idea && (
-            <button
-              type="button"
-              onClick={generateIdea}
-              disabled={ideaLoading || isSubmitting}
-              className="mt-2 rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+            <h2 className="mt-2 text-4xl sm:text-5xl font-bold tracking-tight" aria-hidden={ideaLoading}>
+              {ideaLoading ? shuffledTitle : idea ? idea.title : "Generate one at random"}
+            </h2>
+            <p
+              className="mt-2 text-lg sm:text-xl text-neutral-500 dark:text-neutral-400"
+              aria-hidden={ideaLoading}
             >
-              {ideaLoading ? "Generating…" : "Generate an idea"}
-            </button>
-          )}
+              {ideaLoading
+                ? shuffledTarget
+                : idea
+                  ? idea.targetUser
+                  : "Get a PRD, tech stack, boilerplate, and live preview from one idea."}
+            </p>
 
-          {idea && (
-            <div className="mt-2 space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold">{idea.title}</span>
-                <span className="rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs uppercase tracking-wide text-neutral-500">
+            {idea && !ideaLoading && (
+              <div className="mt-4 space-y-2">
+                <span className="inline-block rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs uppercase tracking-wide text-neutral-500">
                   {idea.platformTag}
                 </span>
+                <p className="text-sm text-neutral-700 dark:text-neutral-300 max-w-prose">{idea.description}</p>
               </div>
-              <p className="text-sm text-neutral-700 dark:text-neutral-300">{idea.description}</p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={useIdea}
-                  disabled={isSubmitting}
-                  className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-                >
-                  Use this idea
-                </button>
+            )}
+
+            {/* A visible shuffle is distracting to announce frame-by-frame — screen readers get
+                just the loading state and the final landed idea. */}
+            <p className="sr-only" role="status" aria-live="polite">
+              {ideaLoading && "Generating an idea…"}
+              {idea && !ideaLoading && `Idea: ${idea.title}, ${idea.targetUser}. ${idea.description}`}
+            </p>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              {!idea && (
                 <button
                   type="button"
                   onClick={generateIdea}
                   disabled={ideaLoading || isSubmitting}
-                  className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                  className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-5 py-2.5 text-sm font-medium disabled:opacity-50"
                 >
-                  {ideaLoading ? "Generating…" : "Randomize again"}
+                  {ideaLoading ? "Generating…" : "Generate an app idea"}
                 </button>
-              </div>
-            </div>
-          )}
+              )}
 
-          {ideaError && (
-            <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="status" aria-live="polite">
-              {ideaError}
+              {idea && (
+                <>
+                  <button
+                    type="button"
+                    onClick={startPrdFromIdea}
+                    disabled={isSubmitting}
+                    className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-5 py-2.5 text-sm font-medium disabled:opacity-50"
+                  >
+                    {isSubmitting ? "Generating…" : "Generate PRD"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={generateIdea}
+                    disabled={ideaLoading || isSubmitting}
+                    className="rounded-md border border-neutral-300 dark:border-neutral-700 px-5 py-2.5 text-sm font-medium disabled:opacity-50"
+                  >
+                    {ideaLoading ? "Generating…" : "Regenerate"}
+                  </button>
+                </>
+              )}
+            </div>
+
+            {ideaError && (
+              <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="status" aria-live="polite">
+                {ideaError}
+              </p>
+            )}
+
+            <p className="mt-3 text-sm" role="status" aria-live="polite">
+              {state.phase === "submitting" && "Generating your PRD, usually under 10 seconds…"}
+              {state.phase === "error" && <span className="text-red-600 dark:text-red-400">{state.message}</span>}
             </p>
+
+            {!showManualForm && (
+              <button
+                type="button"
+                onClick={() => setShowManualForm(true)}
+                className="mt-6 text-sm text-neutral-500 dark:text-neutral-400 underline underline-offset-2 hover:text-neutral-900 dark:hover:text-neutral-100"
+              >
+                or describe your own idea →
+              </button>
+            )}
+          </div>
+
+          {showManualForm && (
+            <form
+              onSubmit={handleSubmit}
+              className="mt-8 space-y-4 border-t border-neutral-200 dark:border-neutral-800 pt-8"
+              aria-busy={isSubmitting}
+            >
+              <div>
+                <label htmlFor={promptId} className="block text-sm font-medium">
+                  Your app idea
+                </label>
+                <textarea
+                  id={promptId}
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  required
+                  rows={4}
+                  disabled={isSubmitting}
+                  placeholder="A tool that helps freelancers track invoices and send payment reminders..."
+                  className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor={platformId} className="block text-sm font-medium">
+                    Platform <span className="text-neutral-500 font-normal">(optional)</span>
+                  </label>
+                  <select
+                    id={platformId}
+                    value={platform}
+                    onChange={(e) => setPlatform(e.target.value as PlatformHint | "")}
+                    disabled={isSubmitting}
+                    className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
+                  >
+                    <option value="">No preference</option>
+                    <option value="web">Web</option>
+                    <option value="mobile">Mobile</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor={scopeId} className="block text-sm font-medium">
+                    Scope <span className="text-neutral-500 font-normal">(optional)</span>
+                  </label>
+                  <select
+                    id={scopeId}
+                    value={scopeSize}
+                    onChange={(e) => setScopeSize(e.target.value as ScopeSizeHint | "")}
+                    disabled={isSubmitting}
+                    className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
+                  >
+                    <option value="">No preference</option>
+                    <option value="weekend">Weekend project</option>
+                    <option value="mvp">MVP</option>
+                    <option value="production">Production app</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor={stackId} className="block text-sm font-medium">
+                  Stacks you already know <span className="text-neutral-500 font-normal">(optional)</span>
+                </label>
+                <input
+                  id={stackId}
+                  type="text"
+                  value={stackFamiliarity}
+                  onChange={(e) => setStackFamiliarity(e.target.value)}
+                  disabled={isSubmitting}
+                  placeholder="e.g. React, Postgres"
+                  className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting || !prompt.trim()}
+                className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium disabled:opacity-50"
+              >
+                {isSubmitting ? "Generating…" : "Generate PRD"}
+              </button>
+            </form>
           )}
-        </div>
-      )}
-
-      {(state.phase === "idle" || state.phase === "submitting" || state.phase === "error") && (
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4" aria-busy={isSubmitting}>
-          <div>
-            <label htmlFor={promptId} className="block text-sm font-medium">
-              Your app idea
-            </label>
-            <textarea
-              id={promptId}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              required
-              rows={4}
-              disabled={isSubmitting}
-              placeholder="A tool that helps freelancers track invoices and send payment reminders..."
-              className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label htmlFor={platformId} className="block text-sm font-medium">
-                Platform <span className="text-neutral-500 font-normal">(optional)</span>
-              </label>
-              <select
-                id={platformId}
-                value={platform}
-                onChange={(e) => setPlatform(e.target.value as PlatformHint | "")}
-                disabled={isSubmitting}
-                className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
-              >
-                <option value="">No preference</option>
-                <option value="web">Web</option>
-                <option value="mobile">Mobile</option>
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor={scopeId} className="block text-sm font-medium">
-                Scope <span className="text-neutral-500 font-normal">(optional)</span>
-              </label>
-              <select
-                id={scopeId}
-                value={scopeSize}
-                onChange={(e) => setScopeSize(e.target.value as ScopeSizeHint | "")}
-                disabled={isSubmitting}
-                className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
-              >
-                <option value="">No preference</option>
-                <option value="weekend">Weekend project</option>
-                <option value="mvp">MVP</option>
-                <option value="production">Production app</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor={stackId} className="block text-sm font-medium">
-              Stacks you already know <span className="text-neutral-500 font-normal">(optional)</span>
-            </label>
-            <input
-              id={stackId}
-              type="text"
-              value={stackFamiliarity}
-              onChange={(e) => setStackFamiliarity(e.target.value)}
-              disabled={isSubmitting}
-              placeholder="e.g. React, Postgres"
-              className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={isSubmitting || !prompt.trim()}
-            className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium disabled:opacity-50"
-          >
-            {isSubmitting ? "Generating…" : "Generate PRD"}
-          </button>
-
-          <p className="text-sm" role="status" aria-live="polite">
-            {state.phase === "submitting" && "Generating your PRD, usually under 10 seconds…"}
-            {state.phase === "error" && <span className="text-red-600 dark:text-red-400">{state.message}</span>}
-          </p>
-        </form>
+        </>
       )}
 
       {state.phase === "clarifying" && (

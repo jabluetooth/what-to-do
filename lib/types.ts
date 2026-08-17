@@ -16,6 +16,8 @@ export interface PrdSection {
 
 export interface RandomIdea {
   title: string;
+  /** Short phrase naming who it's for, e.g. "for freelancers who hate chasing invoices". */
+  targetUser: string;
   description: string;
   platformTag: PlatformHint;
 }

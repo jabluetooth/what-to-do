@@ -5,6 +5,7 @@ import type { RandomIdea } from "@/lib/types";
 
 const RandomIdeaSchema = z.object({
   title: z.string().min(1),
+  targetUser: z.string().min(1),
   description: z.string().min(1),
   platformTag: z.enum(["web", "mobile"]),
 });
@@ -18,10 +19,14 @@ const IDEA_TOOL = {
       type: "object",
       properties: {
         title: { type: "string", description: "Short, catchy app name or concept (a few words)." },
-        description: { type: "string", description: "One sentence: what it does and who it's for." },
+        targetUser: {
+          type: "string",
+          description: "Short phrase naming who it's for, starting with 'for', e.g. 'for freelancers who hate chasing invoices'.",
+        },
+        description: { type: "string", description: "One to two sentences: what it does and how it works." },
         platformTag: { type: "string", enum: ["web", "mobile"] },
       },
-      required: ["title", "description", "platformTag"],
+      required: ["title", "targetUser", "description", "platformTag"],
     },
   },
 };
