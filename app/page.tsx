@@ -758,24 +758,24 @@ export default function Home() {
                 overflow-hidden — the outer hero div deliberately has none, or it would clip the
                 breakout right back down to its own narrow width. Font-size scales with viewport
                 width (clamp) so "WHAT TO DO?" reaches from edge to edge at any screen size.
-                Height is fixed at 0.75em (relative to that same font-size, via inheritance) with
-                leading-none on the text — the earlier version relied on translate-y + an
-                auto-sized wrapper, which doesn't crop anything: a transform repaints pixels but
-                never changes the box overflow-hidden measures against, and default line-height
-                pads well beyond the glyphs, so nothing visible was actually being cut. This crops
-                for real: exactly the top 3/4 of the glyphs show, the bottom 1/4 (descenders/base)
-                is clipped. A top-to-bottom mask keeps the visible 3/4 solid before gradually
-                fading out toward that crop line, instead of a hard edge. */}
+                Height is fixed (relative to that same font-size, via inheritance) with
+                leading-none on the text — a transform-based crop doesn't work here: a transform
+                repaints pixels without changing the box overflow-hidden measures against, and
+                default line-height pads well beyond the glyphs, so nothing visible actually gets
+                cut that way. A taller window (0.92em, cropping only the very base of the glyphs)
+                than the mask's own fade zone means the fade has real room to play out gradually
+                before it reaches that crop line, instead of both happening over the same short
+                span and reading as one abrupt edge. */}
             <div
               className="pointer-events-none absolute bottom-0 left-1/2 z-0 w-screen -translate-x-1/2 overflow-hidden"
-              style={{ height: "0.75em", fontSize: "clamp(3rem, 14vw, 18rem)" }}
+              style={{ height: "0.92em", fontSize: "clamp(3rem, 14vw, 18rem)" }}
             >
               <p
                 aria-hidden="true"
                 className="select-none whitespace-nowrap text-center font-extrabold leading-none tracking-tighter text-neutral-900/[0.05] dark:text-white/[0.045] blur-[2px]"
                 style={{
-                  maskImage: "linear-gradient(to bottom, black 0%, black 35%, transparent 100%)",
-                  WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 35%, transparent 100%)",
+                  maskImage: "linear-gradient(to bottom, black 0%, black 15%, transparent 95%)",
+                  WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 15%, transparent 95%)",
                 }}
               >
                 WHAT TO DO?
