@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getOrInitGuestSession } from "@/lib/redis/guestSession";
-import { enforceGenerationCap, RateLimitExceededError } from "@/lib/redis/rateLimit";
+import { enforceGenerationCap, getGenerationTier, RateLimitExceededError } from "@/lib/redis/rateLimit";
 import { createJob } from "@/lib/pipeline/jobs";
 import { enqueueBoilerplateJob } from "@/lib/pipeline/enqueue";
 import { isModelExhausted } from "@/lib/llm/modelAvailability";
@@ -24,7 +24,7 @@ export async function POST() {
   }
 
   try {
-    await enforceGenerationCap(sessionId, "boilerplate");
+    await enforceGenerationCap(sessionId, "boilerplate", await getGenerationTier());
   } catch (err) {
     if (err instanceof RateLimitExceededError) {
       return NextResponse.json({ error: err.message }, { status: 429 });

@@ -1,4 +1,5 @@
 import { getRedis } from "@/lib/redis";
+import { auth } from "@/lib/auth";
 
 const WINDOW_SECONDS = 24 * 60 * 60;
 
@@ -30,6 +31,17 @@ const GENERATION_LIMITS: Record<UserTier, Record<string, number>> = {
     boilerplate: 5,
   },
 };
+
+/**
+ * Every cap-enforcing route calls this instead of assuming "guest" — the pipeline itself still
+ * only ever operates on a guest Redis session (Slice 9's Postgres-backed signed-in pipeline
+ * hasn't shipped yet), but a signed-in user submitting through that same guest session is still
+ * signed in and should get the signedIn limit/message, not be told to "sign up" a second time.
+ */
+export async function getGenerationTier(): Promise<UserTier> {
+  const session = await auth();
+  return session?.user?.id ? "signedIn" : "guest";
+}
 
 export class RateLimitExceededError extends Error {
   constructor(stage: string, limit: number, tier: UserTier) {

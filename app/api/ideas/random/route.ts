@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getOrCreateGuestSessionId } from "@/lib/redis/guestSession";
 import { getRecentIdeaTitles, pushRecentIdeaTitle } from "@/lib/redis/recentIdeas";
-import { enforceGenerationCap, RateLimitExceededError } from "@/lib/redis/rateLimit";
+import { enforceGenerationCap, getGenerationTier, RateLimitExceededError } from "@/lib/redis/rateLimit";
 import { generateRandomIdea } from "@/lib/llm/ideas";
 import { moderateInput } from "@/lib/llm/moderation";
 
@@ -11,7 +11,7 @@ export async function POST() {
   const sessionId = await getOrCreateGuestSessionId();
 
   try {
-    await enforceGenerationCap(sessionId, "ideas");
+    await enforceGenerationCap(sessionId, "ideas", await getGenerationTier());
   } catch (err) {
     if (err instanceof RateLimitExceededError) {
       return NextResponse.json({ error: err.message }, { status: 429 });

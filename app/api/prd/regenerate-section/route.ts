@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getOrInitGuestSession, writeGuestSession } from "@/lib/redis/guestSession";
-import { enforceGenerationCap, RateLimitExceededError } from "@/lib/redis/rateLimit";
+import { enforceGenerationCap, getGenerationTier, RateLimitExceededError } from "@/lib/redis/rateLimit";
 import { PRD_SECTION_DEFS, regeneratePrdSection } from "@/lib/llm/prd";
 import { replaceSection } from "@/lib/pipeline/prdSections";
 import { markStackStaleIfPresent, markBoilerplateStaleIfPresent } from "@/lib/pipeline/staleness";
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    await enforceGenerationCap(sessionId, "prd");
+    await enforceGenerationCap(sessionId, "prd", await getGenerationTier());
   } catch (err) {
     if (err instanceof RateLimitExceededError) {
       return NextResponse.json({ error: err.message }, { status: 429 });
