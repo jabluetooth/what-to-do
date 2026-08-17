@@ -432,6 +432,15 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showSignInModal]);
 
+  useEffect(() => {
+    if (!showManualForm) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setShowManualForm(false);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showManualForm]);
+
   async function submitPrompt(promptText: string, hintOverrides?: Partial<ReturnType<typeof hints>>) {
     if (!promptText.trim()) return;
 
@@ -451,10 +460,12 @@ export default function Home() {
 
       if (data.needsClarification) {
         setState({ phase: "clarifying", question: data.clarifyingQuestion, submitting: false });
+        setShowManualForm(false);
         return;
       }
 
       setState({ phase: "result", sections: data.sections, lowConfidence: data.lowConfidence });
+      setShowManualForm(false);
     } catch {
       setState({ phase: "error", message: "Network error — please try again." });
     }
@@ -967,90 +978,6 @@ export default function Home() {
               </p>
             </div>
           </div>
-
-          {showManualForm && (
-            <form
-              onSubmit={handleSubmit}
-              className="mt-8 space-y-4 border-t border-neutral-200 dark:border-neutral-800 pt-8"
-              aria-busy={isSubmitting}
-            >
-              <div>
-                <label htmlFor={promptId} className="block text-sm font-medium">
-                  Your app idea
-                </label>
-                <textarea
-                  id={promptId}
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  required
-                  rows={4}
-                  disabled={isSubmitting}
-                  placeholder="A tool that helps freelancers track invoices and send payment reminders..."
-                  className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor={platformId} className="block text-sm font-medium">
-                    Platform <span className="text-neutral-500 font-normal">(optional)</span>
-                  </label>
-                  <select
-                    id={platformId}
-                    value={platform}
-                    onChange={(e) => setPlatform(e.target.value as PlatformHint | "")}
-                    disabled={isSubmitting}
-                    className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
-                  >
-                    <option value="">No preference</option>
-                    <option value="web">Web</option>
-                    <option value="mobile">Mobile</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label htmlFor={scopeId} className="block text-sm font-medium">
-                    Scope <span className="text-neutral-500 font-normal">(optional)</span>
-                  </label>
-                  <select
-                    id={scopeId}
-                    value={scopeSize}
-                    onChange={(e) => setScopeSize(e.target.value as ScopeSizeHint | "")}
-                    disabled={isSubmitting}
-                    className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
-                  >
-                    <option value="">No preference</option>
-                    <option value="weekend">Weekend project</option>
-                    <option value="mvp">MVP</option>
-                    <option value="production">Production app</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor={stackId} className="block text-sm font-medium">
-                  Stacks you already know <span className="text-neutral-500 font-normal">(optional)</span>
-                </label>
-                <input
-                  id={stackId}
-                  type="text"
-                  value={stackFamiliarity}
-                  onChange={(e) => setStackFamiliarity(e.target.value)}
-                  disabled={isSubmitting}
-                  placeholder="e.g. React, Postgres"
-                  className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSubmitting || !prompt.trim()}
-                className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium disabled:opacity-50"
-              >
-                {isSubmitting ? "Generating…" : "Generate PRD"}
-              </button>
-            </form>
-          )}
         </>
       )}
 
@@ -1706,6 +1633,124 @@ export default function Home() {
                 Wait for the current boilerplate job to finish before signing in.
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {showManualForm && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center sm:px-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowManualForm(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="manual-form-title"
+            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl [animation:slide-up-sheet_0.3s_ease-out] sm:rounded-2xl sm:[animation:none]"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <h2 id="manual-form-title" className="text-lg font-semibold">
+                Describe your own idea
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowManualForm(false)}
+                aria-label="Close"
+                className="rounded-full p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-white/10 dark:hover:text-white"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="mt-4 space-y-4" aria-busy={isSubmitting}>
+              <div>
+                <label htmlFor={promptId} className="block text-sm font-medium">
+                  Your app idea
+                </label>
+                <textarea
+                  id={promptId}
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  required
+                  rows={4}
+                  disabled={isSubmitting}
+                  placeholder="A tool that helps freelancers track invoices and send payment reminders..."
+                  className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor={platformId} className="block text-sm font-medium">
+                    Platform <span className="text-neutral-500 font-normal">(optional)</span>
+                  </label>
+                  <select
+                    id={platformId}
+                    value={platform}
+                    onChange={(e) => setPlatform(e.target.value as PlatformHint | "")}
+                    disabled={isSubmitting}
+                    className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
+                  >
+                    <option value="">No preference</option>
+                    <option value="web">Web</option>
+                    <option value="mobile">Mobile</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor={scopeId} className="block text-sm font-medium">
+                    Scope <span className="text-neutral-500 font-normal">(optional)</span>
+                  </label>
+                  <select
+                    id={scopeId}
+                    value={scopeSize}
+                    onChange={(e) => setScopeSize(e.target.value as ScopeSizeHint | "")}
+                    disabled={isSubmitting}
+                    className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
+                  >
+                    <option value="">No preference</option>
+                    <option value="weekend">Weekend project</option>
+                    <option value="mvp">MVP</option>
+                    <option value="production">Production app</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor={stackId} className="block text-sm font-medium">
+                  Stacks you already know <span className="text-neutral-500 font-normal">(optional)</span>
+                </label>
+                <input
+                  id={stackId}
+                  type="text"
+                  value={stackFamiliarity}
+                  onChange={(e) => setStackFamiliarity(e.target.value)}
+                  disabled={isSubmitting}
+                  placeholder="e.g. React, Postgres"
+                  className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting || !prompt.trim()}
+                className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium disabled:opacity-50"
+              >
+                {isSubmitting ? "Generating…" : "Generate PRD"}
+              </button>
+
+              {/* The hero's own status paragraph is behind this modal's backdrop and wouldn't be
+                  visible — a submit error needs its own copy here instead. */}
+              {state.phase === "error" && (
+                <p className="text-sm text-red-600 dark:text-red-400" role="status" aria-live="polite">
+                  {state.message}
+                </p>
+              )}
+            </form>
           </div>
         </div>
       )}
