@@ -18,7 +18,6 @@ function formatDuration(totalSeconds: number): string {
 const SCRAMBLE_CHARS = "!<>-_\\/[]{}—=+*^?#0123456789";
 const SCRAMBLE_DURATION_MS = 900;
 const LOADING_SCRAMBLE_INTERVAL_MS = 90;
-const PLACEHOLDER_TITLE = "Generate one at random";
 const PLACEHOLDER_TARGET = "Get a PRD, tech stack, boilerplate, and live preview from one idea.";
 
 function randomScrambleString(length: number): string {
@@ -177,8 +176,12 @@ export default function Home() {
   // is the random idea generator, not typing a prompt.
   const [showManualForm, setShowManualForm] = useState(false);
   // Bumped only when a new idea actually lands — TextScramble replays its reveal on a change,
-  // never on mount (starts at 0, see its own "play === lastPlayRef.current" guard).
+  // never on mount (starts at 0, see its own "play === lastPlayRef.current" guard). Drives the
+  // subtitle; the title uses its own titlePlay below so it alone can also replay on landing.
   const [scrambleKey, setScrambleKey] = useState(0);
+  // Same idea, title-only — also bumped once on mount so the headline (and only the headline)
+  // plays its scramble-in as soon as the page loads, not just when a fresh idea lands.
+  const [titlePlay, setTitlePlay] = useState(0);
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [showSignInModal, setShowSignInModal] = useState(false);
 
@@ -333,6 +336,15 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Plays the placeholder headline's scramble-in once on landing (title only, not the
+  // subtitle) — the same reveal a fresh idea's title gets, just triggered by the page load
+  // itself rather than a button press. Deferred a tick so the setState isn't synchronous
+  // within the effect body.
+  useEffect(() => {
+    const id = setTimeout(() => setTitlePlay((k) => k + 1), 0);
+    return () => clearTimeout(id);
   }, []);
 
   useEffect(() => {
@@ -691,6 +703,7 @@ export default function Home() {
       }
       setIdea(data);
       setScrambleKey((k) => k + 1);
+      setTitlePlay((k) => k + 1);
     } catch {
       setIdeaError("Network error — please try again.");
     } finally {
@@ -748,10 +761,10 @@ export default function Home() {
         </div>
       </nav>
 
-      <main className="flex-1 mx-auto w-full max-w-2xl px-6 pt-28 pb-16">
+      <main className="flex-1 mx-auto w-full max-w-2xl px-6 pt-20 pb-16">
       {(state.phase === "idle" || state.phase === "submitting" || state.phase === "error") && (
         <>
-          <div className="relative mt-16 pb-28 text-center">
+          <div className="relative mt-8 pb-40 text-center">
             {/* Decorative watermark: purely cosmetic, so it's not part of the a11y tree. This
                 wrapper breaks out of the max-w-2xl column to span the full viewport width
                 (left-1/2 + -translate-x-1/2 + w-screen), clipped only vertically by its own
@@ -783,14 +796,20 @@ export default function Home() {
             </div>
 
             <div className="relative z-10">
-              <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
+              <p className="text-base font-medium text-neutral-500 dark:text-neutral-400">
                 {idea || ideaLoading ? "Your next app" : "Stuck on what to build?"}
               </p>
 
-              <h2 className="mt-3 text-4xl sm:text-5xl font-bold tracking-tight">
-                <TextScramble text={idea ? idea.title : PLACEHOLDER_TITLE} play={scrambleKey} loading={ideaLoading} />
+              <h2 className="mt-3 text-5xl sm:text-6xl font-bold tracking-tight">
+                {idea ? (
+                  <TextScramble text={idea.title} play={scrambleKey} loading={ideaLoading} />
+                ) : (
+                  <>
+                    Generate one at <TextScramble text="random" play={titlePlay} loading={ideaLoading} />
+                  </>
+                )}
               </h2>
-              <p className="mt-3 text-sm sm:text-base text-neutral-500 dark:text-neutral-400">
+              <p className="mt-3 text-base sm:text-lg text-neutral-500 dark:text-neutral-400">
                 <TextScramble
                   text={idea ? idea.targetUser : PLACEHOLDER_TARGET}
                   play={scrambleKey}
@@ -803,7 +822,7 @@ export default function Home() {
                   <span className="inline-block rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs uppercase tracking-wide text-neutral-500">
                     {idea.platformTag}
                   </span>
-                  <p className="mx-auto max-w-prose text-sm text-neutral-700 dark:text-neutral-300">
+                  <p className="mx-auto max-w-prose text-base text-neutral-700 dark:text-neutral-300">
                     {idea.description}
                   </p>
                 </div>
@@ -822,7 +841,7 @@ export default function Home() {
                     type="button"
                     onClick={generateIdea}
                     disabled={ideaLoading || isSubmitting}
-                    className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-5 py-2.5 text-sm font-medium disabled:opacity-50"
+                    className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-5 py-2.5 text-base font-medium disabled:opacity-50"
                   >
                     {ideaLoading ? "Generating…" : "Generate an app idea"}
                   </button>
@@ -834,7 +853,7 @@ export default function Home() {
                       type="button"
                       onClick={startPrdFromIdea}
                       disabled={isSubmitting}
-                      className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-5 py-2.5 text-sm font-medium disabled:opacity-50"
+                      className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-5 py-2.5 text-base font-medium disabled:opacity-50"
                     >
                       {isSubmitting ? "Generating…" : "Generate PRD"}
                     </button>
@@ -842,7 +861,7 @@ export default function Home() {
                       type="button"
                       onClick={generateIdea}
                       disabled={ideaLoading || isSubmitting}
-                      className="rounded-md border border-neutral-300 dark:border-neutral-700 px-5 py-2.5 text-sm font-medium disabled:opacity-50"
+                      className="rounded-md border border-neutral-300 dark:border-neutral-700 px-5 py-2.5 text-base font-medium disabled:opacity-50"
                     >
                       {ideaLoading ? "Generating…" : "Regenerate"}
                     </button>
@@ -853,7 +872,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => setShowManualForm(true)}
-                    className="text-sm text-neutral-500 dark:text-neutral-400 underline underline-offset-2 hover:text-neutral-900 dark:hover:text-neutral-100"
+                    className="text-base text-neutral-500 dark:text-neutral-400 underline underline-offset-2 hover:text-neutral-900 dark:hover:text-neutral-100"
                   >
                     or describe your own idea →
                   </button>
@@ -861,12 +880,12 @@ export default function Home() {
               </div>
 
               {ideaError && (
-                <p className="mt-3 text-sm text-red-600 dark:text-red-400" role="status" aria-live="polite">
+                <p className="mt-3 text-base text-red-600 dark:text-red-400" role="status" aria-live="polite">
                   {ideaError}
                 </p>
               )}
 
-              <p className="mt-4 text-sm" role="status" aria-live="polite">
+              <p className="mt-4 text-base" role="status" aria-live="polite">
                 {state.phase === "submitting" && "Generating your PRD, usually under 10 seconds…"}
                 {state.phase === "error" && <span className="text-red-600 dark:text-red-400">{state.message}</span>}
               </p>
