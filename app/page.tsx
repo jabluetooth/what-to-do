@@ -17,6 +17,31 @@ function formatDuration(totalSeconds: number): string {
 
 const SCRAMBLE_CHARS = "!<>-_\\/[]{}—=+*^?#0123456789";
 const SCRAMBLE_DURATION_MS = 550;
+const LOADING_SCRAMBLE_INTERVAL_MS = 50;
+const PLACEHOLDER_TITLE = "Generate one at random";
+const PLACEHOLDER_TARGET = "Get a PRD, tech stack, boilerplate, and live preview from one idea.";
+
+function randomScrambleString(length: number): string {
+  let out = "";
+  for (let i = 0; i < length; i++) out += SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
+  return out;
+}
+
+/**
+ * Continuously re-randomizes a string of `length` characters while `active` — the "generating"
+ * indicator that plays the instant the request fires, handing off to TextScramble's resolve-in
+ * reveal once the real idea actually lands (see the ideaLoading ? ... : <TextScramble .../> split
+ * where this is used).
+ */
+function useLoadingScramble(active: boolean, length: number): string {
+  const [display, setDisplay] = useState(() => randomScrambleString(length));
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setDisplay(randomScrambleString(length)), LOADING_SCRAMBLE_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [active, length]);
+  return display;
+}
 
 /**
  * Reveals `text` left-to-right, showing random characters in place of not-yet-revealed ones.
@@ -150,6 +175,11 @@ export default function Home() {
   // Bumped only when a new idea actually lands — TextScramble replays its reveal on a change,
   // never on mount (starts at 0, see its own "play === lastPlayRef.current" guard).
   const [scrambleKey, setScrambleKey] = useState(0);
+  const titleLoadingScramble = useLoadingScramble(ideaLoading, idea ? idea.title.length : PLACEHOLDER_TITLE.length);
+  const targetLoadingScramble = useLoadingScramble(
+    ideaLoading,
+    idea ? idea.targetUser.length : PLACEHOLDER_TARGET.length
+  );
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [showSignInModal, setShowSignInModal] = useState(false);
 
@@ -728,13 +758,18 @@ export default function Home() {
             </p>
 
             <h2 className="mt-2 text-4xl sm:text-5xl font-bold tracking-tight">
-              <TextScramble text={idea ? idea.title : "Generate one at random"} play={scrambleKey} />
+              {ideaLoading ? (
+                <span aria-hidden="true">{titleLoadingScramble}</span>
+              ) : (
+                <TextScramble text={idea ? idea.title : PLACEHOLDER_TITLE} play={scrambleKey} />
+              )}
             </h2>
             <p className="mt-2 text-lg sm:text-xl text-neutral-500 dark:text-neutral-400">
-              <TextScramble
-                text={idea ? idea.targetUser : "Get a PRD, tech stack, boilerplate, and live preview from one idea."}
-                play={scrambleKey}
-              />
+              {ideaLoading ? (
+                <span aria-hidden="true">{targetLoadingScramble}</span>
+              ) : (
+                <TextScramble text={idea ? idea.targetUser : PLACEHOLDER_TARGET} play={scrambleKey} />
+              )}
             </p>
 
             {idea && !ideaLoading && (
