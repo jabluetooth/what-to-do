@@ -868,7 +868,10 @@ export default function Home() {
               (e.g. "I know FastAPI") once a PRD already exists. Editable here too, and sent on
               every generate/regenerate.
             */}
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+              Prefilled from your answers above — adjust these to refine the stack recommendation.
+            </p>
+            <div className="mt-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
               <select
                 id={platformId}
                 value={platform}
