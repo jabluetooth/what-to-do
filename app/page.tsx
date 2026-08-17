@@ -758,17 +758,24 @@ export default function Home() {
                 overflow-hidden — the outer hero div deliberately has none, or it would clip the
                 breakout right back down to its own narrow width. Font-size scales with viewport
                 width (clamp) so "WHAT TO DO?" reaches from edge to edge at any screen size.
-                Translated down by a quarter of its own height so overflow-hidden crops the last
-                1/4 — the mask then fades the visible 3/4 toward transparent as it approaches that
-                crop line, instead of a hard edge. */}
-            <div className="pointer-events-none absolute bottom-0 left-1/2 z-0 w-screen -translate-x-1/2 translate-y-1/4 overflow-hidden">
+                Height is fixed at 0.75em (relative to that same font-size, via inheritance) with
+                leading-none on the text — the earlier version relied on translate-y + an
+                auto-sized wrapper, which doesn't crop anything: a transform repaints pixels but
+                never changes the box overflow-hidden measures against, and default line-height
+                pads well beyond the glyphs, so nothing visible was actually being cut. This crops
+                for real: exactly the top 3/4 of the glyphs show, the bottom 1/4 (descenders/base)
+                is clipped. A top-to-bottom mask keeps the visible 3/4 solid before gradually
+                fading out toward that crop line, instead of a hard edge. */}
+            <div
+              className="pointer-events-none absolute bottom-0 left-1/2 z-0 w-screen -translate-x-1/2 overflow-hidden"
+              style={{ height: "0.75em", fontSize: "clamp(3rem, 14vw, 18rem)" }}
+            >
               <p
                 aria-hidden="true"
-                className="select-none whitespace-nowrap text-center font-extrabold tracking-tighter text-neutral-900/[0.05] dark:text-white/[0.045] blur-[2px]"
+                className="select-none whitespace-nowrap text-center font-extrabold leading-none tracking-tighter text-neutral-900/[0.05] dark:text-white/[0.045] blur-[2px]"
                 style={{
-                  fontSize: "clamp(3rem, 14vw, 18rem)",
-                  maskImage: "linear-gradient(to bottom, black 0%, black 55%, transparent 100%)",
-                  WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 55%, transparent 100%)",
+                  maskImage: "linear-gradient(to bottom, black 0%, black 35%, transparent 100%)",
+                  WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 35%, transparent 100%)",
                 }}
               >
                 WHAT TO DO?
