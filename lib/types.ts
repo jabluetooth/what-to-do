@@ -51,8 +51,9 @@ export interface GuestSession {
   boilerplateStale?: boolean;
   /**
    * Whether the generated boilerplate can run in a WebContainer preview (PRD §6.5) — set from
-   * which template actually produced it (lib/pipeline/template.ts's isWebContainerCompatible),
-   * not inferred from the recommended stack text, so it can't mismatch what was actually
+   * which template actually produced it (lib/pipeline/templateRegistry.ts's
+   * TemplateManifest.webContainerCompatible), not inferred from the recommended stack text, so
+   * it can't mismatch what was actually
    * generated. False for the FastAPI template: /preview/[ref] falls back to a static file-tree
    * view instead of booting a live server.
    */

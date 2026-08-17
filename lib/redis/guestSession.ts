@@ -61,13 +61,27 @@ export async function claimGuestSessionForConversion(id: string): Promise<boolea
 }
 
 /**
+ * Redis-only write, no cookie touch — for callers with no active request/response cycle to
+ * mutate a cookie on, namely the boilerplate worker (runs detached: fire-and-forget in local
+ * dev, Next's after() in production). Next.js's cookies().set() throws ("Cookies can only be
+ * modified in a Server Action or Route Handler") outside that scope; confirmed live — every
+ * successful boilerplate job was hitting this and getting reported to the user as "failed"
+ * despite the generated files being valid. Every route-handler call site should keep using
+ * writeGuestSession below so the cookie's maxAge keeps sliding with activity; this is only for
+ * callers that structurally can't do that.
+ */
+export async function writeGuestSessionData(id: string, session: GuestSession): Promise<void> {
+  await getRedis().set(sessionKey(id), session, { ex: GUEST_SESSION_TTL_SECONDS });
+}
+
+/**
  * Sliding TTL: every write refreshes both the Redis expiry and the cookie's maxAge. Without
  * refreshing the cookie too, it would expire at a fixed 45 minutes from first visit regardless
  * of activity — silently breaking the "inactivity" framing (an active user's browser would just
  * stop sending the cookie) while the Redis data underneath kept correctly sliding.
  */
 export async function writeGuestSession(id: string, session: GuestSession): Promise<void> {
-  await Promise.all([getRedis().set(sessionKey(id), session, { ex: GUEST_SESSION_TTL_SECONDS }), setGuestCookie(id)]);
+  await Promise.all([writeGuestSessionData(id, session), setGuestCookie(id)]);
 }
 
 export async function deleteGuestSession(id: string): Promise<void> {

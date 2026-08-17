@@ -1,4 +1,5 @@
 import type { PromptHints, StackCategory } from "@/lib/types";
+import { TEMPLATE_REGISTRY, DEFAULT_TEMPLATE, type TemplateDescriptor } from "@/lib/pipeline/templateRegistry";
 
 /**
  * Curated decision matrix, not LLM reasoning — per PRD §10's own recommendation
@@ -7,12 +8,11 @@ import type { PromptHints, StackCategory } from "@/lib/types";
  * keeps "override one piece" well-defined: swapping a deterministic pick for another
  * known option, not re-rolling a black box.
  *
- * pickStack()'s auto-recommendation only ever picks a backend with a real template behind it
- * (see lib/pipeline/template.ts's resolveTemplateId): "Next.js API routes / Server Actions" or
- * "FastAPI (Python)". NestJS/Django/Rails stay listed below as manual override choices (a user
- * can still pick one from the dropdown) but generating a matching boilerplate for those isn't
- * implemented — overriding to them reintroduces the same stack/boilerplate mismatch this file's
- * auto-pick logic exists to avoid.
+ * pickStack()'s auto-recommendation only ever picks a backend with a real template behind it —
+ * one of templateRegistry.ts's TEMPLATE_REGISTRY entries. NestJS/Django/Rails stay listed below
+ * as manual override choices (a user can still pick one from the dropdown) but generating a
+ * matching boilerplate for those isn't implemented — overriding to them reintroduces the same
+ * stack/boilerplate mismatch this file's auto-pick logic exists to avoid.
  */
 
 export const STACK_ALTERNATIVES: Record<StackCategory, string[]> = {
@@ -52,43 +52,39 @@ function familiarityIncludes(familiarity: string | undefined, ...keywords: strin
   return keywords.some((kw) => lower.includes(kw));
 }
 
+/** First non-default template whose keywords match the free-text familiarity hint, if any. */
+function matchTemplate(familiarity: string | undefined): TemplateDescriptor | undefined {
+  return TEMPLATE_REGISTRY.find(
+    (template) => template !== DEFAULT_TEMPLATE && familiarityIncludes(familiarity, ...template.keywords)
+  );
+}
+
 export function pickStack(hints: PromptHints | undefined): StackPicks {
   const familiarity = hints?.stackFamiliarity;
   const platform = hints?.platform;
-  const scopeSize = hints?.scopeSize ?? "mvp";
+  const matched = matchTemplate(familiarity);
+  const nonJsBackend = matched ? !matched.webContainerCompatible : false;
 
   // Frontend
   let frontend = "Next.js (React, TypeScript)";
   if (platform === "mobile") frontend = "React Native (Expo)";
   else if (familiarityIncludes(familiarity, "vue")) frontend = "Vue.js + Nuxt";
   else if (familiarityIncludes(familiarity, "svelte")) frontend = "SvelteKit";
+  if (matched?.frontendOverride) frontend = matched.frontendOverride;
 
-  // Backend — constrained to the two backends that have an actual boilerplate template
-  // (see lib/pipeline/template.ts's resolveTemplateId): recommending NestJS/Django/Rails
-  // when generation can only ever produce Next.js or FastAPI code was the original "boilerplate
-  // never matches the recommended stack" bug. Django/Rails/NestJS familiarity still steers
-  // toward the closest deliverable pick (Python-family -> FastAPI, otherwise Next.js) rather
-  // than being ignored outright.
-  let backend = "Next.js API routes / Server Actions (same app)";
-  let nonJsBackend = false;
-  if (familiarityIncludes(familiarity, "django", "rails", "ruby", "fastapi", "flask")) {
-    backend = "FastAPI (Python)";
-    nonJsBackend = true;
-  }
+  const backend = (matched ?? DEFAULT_TEMPLATE).backendChoice;
 
-  // Database
-  let database = scopeSize === "weekend" ? "SQLite" : "PostgreSQL (Neon)";
-  if (familiarityIncludes(familiarity, "mongo")) database = "MongoDB (Atlas)";
-  else if (familiarityIncludes(familiarity, "mysql")) database = "MySQL (PlanetScale)";
-  else if (familiarityIncludes(familiarity, "supabase")) database = "PostgreSQL (Supabase)";
-  else if (familiarityIncludes(familiarity, "firebase", "firestore")) database = "Firestore (Firebase)";
-  else if (familiarityIncludes(familiarity, "postgres")) database = "PostgreSQL (Neon)";
+  // Database — only Postgres is ever actually generated (Drizzle for the Next.js template,
+  // SQLAlchemy for the FastAPI one), so unlike backend/frontend this isn't template-driven —
+  // every current template needs the same database regardless of which one gets picked.
+  let database = "PostgreSQL (Neon)";
+  if (familiarityIncludes(familiarity, "supabase")) database = "PostgreSQL (Supabase)";
 
   // Hosting
   let hosting = "Vercel";
-  if (nonJsBackend) hosting = "Railway";
-  else if (familiarityIncludes(familiarity, "firebase")) hosting = "Firebase Hosting";
+  if (familiarityIncludes(familiarity, "firebase")) hosting = "Firebase Hosting";
   else if (familiarityIncludes(familiarity, "fly.io", "flyio")) hosting = "Fly.io";
+  if (matched?.hostingOverride) hosting = matched.hostingOverride;
 
   // Auth
   let auth = "Auth.js (NextAuth)";
@@ -96,6 +92,7 @@ export function pickStack(hints: PromptHints | undefined): StackPicks {
   else if (familiarityIncludes(familiarity, "auth0")) auth = "Auth0";
   else if (familiarityIncludes(familiarity, "supabase")) auth = "Supabase Auth";
   else if (familiarityIncludes(familiarity, "firebase")) auth = "Firebase Auth";
+  if (matched?.authOverride) auth = matched.authOverride;
 
   return { frontend, backend, database, hosting, auth, nonJsBackend };
 }

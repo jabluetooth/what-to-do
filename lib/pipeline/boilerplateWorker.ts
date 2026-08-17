@@ -1,94 +1,20 @@
 import { getJob, updateJob, claimJobRun, releaseJobRun } from "@/lib/pipeline/jobs";
-import { readGuestSession, writeGuestSession } from "@/lib/redis/guestSession";
-import { loadTemplate, resolveTemplateId, isWebContainerCompatible, FASTAPI_TEMPLATE_ID, type TemplateFile } from "@/lib/pipeline/template";
-import { generateBoilerplateFillIn } from "@/lib/llm/boilerplate";
-import { generateFastapiFillIn } from "@/lib/llm/boilerplateFastapi";
+import { readGuestSession, writeGuestSessionData } from "@/lib/redis/guestSession";
+import { loadTemplate, type TemplateFile } from "@/lib/pipeline/template";
+import { resolveTemplate } from "@/lib/pipeline/templateRegistry";
+import { getTemplateImplementation, type TemplateImplementation } from "@/lib/pipeline/templateImplementations";
 import { writeProjectFiles, buildZip, writeProjectZip } from "@/lib/pipeline/projectFiles";
-import { validateBoilerplate, validateFastapiBoilerplate, type ValidationResult } from "@/lib/sandbox/validate";
+import type { ValidationResult } from "@/lib/sandbox/validate";
 import { refundGenerationCap } from "@/lib/redis/rateLimit";
-import type { PrdSection } from "@/lib/types";
 
 const MAX_LOG_CHARS = 4000;
 
-function mergeFillIn(
-  templateFiles: TemplateFile[],
-  fillIn: { mainResourceName: string; schemaFileContent: string; mainRouteFileContent: string; homePageFileContent: string }
-): TemplateFile[] {
-  const files = templateFiles.map((f) => ({ ...f }));
-
-  const schemaFile = files.find((f) => f.path === "lib/db/schema.ts");
-  if (schemaFile) schemaFile.content = fillIn.schemaFileContent;
-
-  const pageFile = files.find((f) => f.path === "app/page.tsx");
-  if (pageFile) pageFile.content = fillIn.homePageFileContent;
-
-  files.push({
-    path: `app/api/${fillIn.mainResourceName}/route.ts`,
-    content: fillIn.mainRouteFileContent,
-  });
-
-  return files;
-}
-
-function mergeFastapiFillIn(
-  templateFiles: TemplateFile[],
-  fillIn: { modelsFileContent: string; mainFileContent: string }
-): TemplateFile[] {
-  const files = templateFiles.map((f) => ({ ...f }));
-
-  const modelsFile = files.find((f) => f.path === "models.py");
-  if (modelsFile) modelsFile.content = fillIn.modelsFileContent;
-
-  const mainFile = files.find((f) => f.path === "main.py");
-  if (mainFile) mainFile.content = fillIn.mainFileContent;
-
-  return files;
-}
-
-/**
- * Fill-in generation branches on which template the recommended stack resolved to (see
- * template.ts's resolveTemplateId) — this is the actual fix for boilerplate always being
- * Next.js regardless of the recommended stack. Next.js gets 3 fill-in files (schema, route,
- * homepage); FastAPI gets 2 (model, main.py — see boilerplateFastapi.ts for why it doesn't
- * need a separate homepage file).
- */
-async function generateFillInFiles(
-  templateId: string,
-  templateFiles: TemplateFile[],
-  prompt: string,
-  sections: PrdSection[],
-  jobId: string
-): Promise<TemplateFile[]> {
-  if (templateId === FASTAPI_TEMPLATE_ID) {
-    await updateJob(jobId, { progress: 20, message: "Generating models & routes..." });
-    const fillIn = await generateFastapiFillIn({ prompt, sections });
-    return mergeFastapiFillIn(templateFiles, fillIn);
-  }
-
-  await updateJob(jobId, { progress: 20, message: "Generating routes & models..." });
-  const fillIn = await generateBoilerplateFillIn({ prompt, sections });
-  await updateJob(jobId, { progress: 45, message: "Generating initial UI..." });
-  return mergeFillIn(templateFiles, fillIn);
-}
-
-/**
- * Validation branches the same way: Next.js gets a real pnpm install + build (validateBoilerplate);
- * FastAPI gets a lighter syntax-only check (validateFastapiBoilerplate) — see that function's
- * doc comment for why a real pip install/run isn't attempted.
- */
-async function runValidation(templateId: string, files: TemplateFile[], jobId: string): Promise<ValidationResult> {
-  if (templateId === FASTAPI_TEMPLATE_ID) {
-    return validateFastapiBoilerplate(files, async (phase) => {
-      if (phase === "build") await updateJob(jobId, { progress: 90, message: "Checking generated Python..." });
-    });
-  }
-
-  return validateBoilerplate(files, async (phase) => {
-    if (phase === "install") {
-      await updateJob(jobId, { progress: 75, message: "Installing dependencies..." });
-    } else {
-      await updateJob(jobId, { progress: 90, message: "Running build check..." });
-    }
+/** Validation progress is the same two checkpoints for every template — only the message text (impl.phaseMessages) varies. */
+async function runValidation(impl: TemplateImplementation, files: TemplateFile[], jobId: string): Promise<ValidationResult> {
+  return impl.validate(files, async (phase) => {
+    const message = impl.phaseMessages[phase];
+    if (!message) return;
+    await updateJob(jobId, { progress: phase === "install" ? 75 : 90, message });
   });
 }
 
@@ -120,22 +46,29 @@ export async function runBoilerplateJob(jobId: string): Promise<void> {
     }
 
     try {
-      const templateId = resolveTemplateId(session.stack);
+      const descriptor = resolveTemplate(session.stack?.backend.choice);
+      const impl = getTemplateImplementation(descriptor.id);
 
       await updateJob(jobId, { state: "running", progress: 5, message: "Selecting template..." });
-      const templateFiles = await loadTemplate(templateId);
+      const templateFiles = await loadTemplate(descriptor.id);
 
       // Awaited throughout (not fire-and-forget): updateJob is a plain read-modify-write, so an
       // in-flight progress write racing the final state write below could land last and
       // silently revert a completed job back to "running" forever.
-      const files = await generateFillInFiles(templateId, templateFiles, session.prompt, session.prdSections, jobId);
+      const files = await impl.generateFillIn(
+        templateFiles,
+        { prompt: session.prompt, sections: session.prdSections },
+        async (progress, message) => {
+          await updateJob(jobId, { progress, message });
+        }
+      );
 
       await updateJob(jobId, { progress: 60, message: "Writing project files..." });
       const prefix = `guest/${job.sessionId}/${jobId}`;
       const zip = await buildZip(files);
       await Promise.all([writeProjectFiles(prefix, files), writeProjectZip(prefix, zip)]);
 
-      const validation = await runValidation(templateId, files, jobId);
+      const validation = await runValidation(impl, files, jobId);
 
       if (!validation.passed) {
         await updateJob(jobId, {
@@ -153,7 +86,6 @@ export async function runBoilerplateJob(jobId: string): Promise<void> {
         return;
       }
 
-      const webContainerCompatible = isWebContainerCompatible(templateId);
       // unvalidated (FastAPI-only) means no Python interpreter was found at all, so nothing was
       // actually checked — the inverse of what "syntax-only check" would suggest. Both this
       // message and the flag itself are threaded through to the client (jobs.ts, the status
@@ -164,16 +96,16 @@ export async function runBoilerplateJob(jobId: string): Promise<void> {
         progress: 100,
         message: validation.unvalidated ? "Done (no Python interpreter found — not syntax-checked)" : "Done",
         resultRef: prefix,
-        webContainerCompatible,
+        webContainerCompatible: descriptor.webContainerCompatible,
         unvalidated: validation.unvalidated ?? false,
       });
 
       session.boilerplateR2Prefix = prefix;
       session.boilerplateStale = false;
-      session.boilerplateWebContainerCompatible = webContainerCompatible;
+      session.boilerplateWebContainerCompatible = descriptor.webContainerCompatible;
       session.currentStage = "boilerplate";
       session.updatedAt = new Date().toISOString();
-      await writeGuestSession(job.sessionId, session);
+      await writeGuestSessionData(job.sessionId, session);
     } catch (err) {
       await updateJob(jobId, {
         state: "failed",
