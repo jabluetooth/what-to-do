@@ -60,6 +60,7 @@ function TextScramble({
   play,
   loading,
   prefix,
+  hidePrefix,
   className,
 }: {
   text: string;
@@ -71,6 +72,11 @@ function TextScramble({
       earlier version did exactly that between the placeholder and a real idea, which reset the
       "already played this reveal" tracking and made the reveal silently skip itself. */
   prefix?: string;
+  /** When true, collapses `prefix` away with a CSS transition instead of it just vanishing the
+      instant `prefix` itself would otherwise change — the abrupt cut was the "seam" between the
+      placeholder and a real idea landing. `prefix` text itself stays constant; only this
+      visibility toggles, so there's always something present to transition. */
+  hidePrefix?: boolean;
   className?: string;
 }) {
   const [display, setDisplay] = useState(text);
@@ -134,7 +140,15 @@ function TextScramble({
 
   return (
     <span className={className}>
-      {prefix}
+      {prefix && (
+        <span
+          className={`inline-block overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-500 ease-out ${
+            hidePrefix ? "max-w-0 opacity-0" : "max-w-[20ch] opacity-100"
+          }`}
+        >
+          {prefix}
+        </span>
+      )}
       {/* font-mono: every glyph in the scramble charset renders at a fixed advance width, so the
           scrambled portion's own rendered width never fluctuates between random draws — without
           this, a proportional font visibly shifts any static text sharing its line (e.g. the
@@ -855,7 +869,8 @@ export default function Home() {
               <h2 className="mt-3 whitespace-nowrap text-2xl sm:text-4xl md:text-5xl font-bold tracking-tight">
                 <TextScramble
                   text={idea ? idea.title : "random"}
-                  prefix={idea ? "" : "Generate one at "}
+                  prefix="Generate one at "
+                  hidePrefix={!!idea}
                   play={titlePlay}
                   loading={ideaLoading}
                 />
