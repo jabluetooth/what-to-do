@@ -142,11 +142,13 @@ function TextScramble({
     <span className={className}>
       {prefix && (
         <span
-          className={`inline-block overflow-hidden whitespace-nowrap font-mono transition-[max-width,opacity] duration-500 ease-out ${
+          className={`inline-block overflow-hidden whitespace-nowrap align-top font-mono leading-none transition-[max-width,opacity] duration-500 ease-out ${
             hidePrefix ? "max-w-0 opacity-0" : "max-w-[20ch] opacity-100"
           }`}
         >
-          {prefix}
+          {/* A trailing plain space here is at real risk of being silently collapsed by normal
+              whitespace rules right at this inline-block's edge — a non-breaking space can't be. */}
+          {prefix.replace(/ $/, " ")}
         </span>
       )}
       {/* font-mono: every glyph in the scramble charset renders at a fixed advance width, so the
@@ -155,8 +157,14 @@ function TextScramble({
           "Generate one at " prefix) left/right as the scramble cycles through different-width
           characters. The prefix is also font-mono for the same reason it's here at all: mixing
           two different font families inline never shares a baseline/cap-height, which read as
-          the scrambled text floating noticeably higher than the prefix next to it. */}
-      <span aria-hidden="true" className="font-mono">
+          the scrambled text floating noticeably higher than the prefix next to it.
+
+          inline-block + align-top + leading-none on both spans, matching each other exactly:
+          a plain inline element's box is sized from the font's natural ascent+descent metrics,
+          not the CSS line-height, so it can end up visibly taller than an inline-block sibling
+          using the same font-size/line-height — which is exactly what made the scrambled text
+          look larger than the prefix next to it even after both moved to the same font. */}
+      <span aria-hidden="true" className="inline-block align-top font-mono leading-none">
         {display}
       </span>
     </span>
