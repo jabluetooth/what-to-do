@@ -27,9 +27,19 @@ const LOADING_SCRAMBLE_INTERVAL_MS = 140;
 const MIN_LOADING_SCRAMBLE_LENGTH = 6;
 const PLACEHOLDER_TARGET = "Get a PRD, tech stack, and boilerplate from one idea.";
 
-function randomScrambleString(length: number): string {
+/**
+ * Scrambles every non-space character of `text` (padded with trailing spaces up to `minLength`
+ * if shorter) while keeping spaces as spaces. Preserving the real word/space layout — not just
+ * a flat random run of characters — matters for multi-word text: a scrambled blob with no spaces
+ * at all can't wrap the same way the real text does, so a subtitle that normally wraps to two
+ * lines could collapse to one (or vice versa) during loading and shift everything below it.
+ */
+function scrambleLike(text: string, minLength: number): string {
+  const padded = text.length >= minLength ? text : text + " ".repeat(minLength - text.length);
   let out = "";
-  for (let i = 0; i < length; i++) out += SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
+  for (let i = 0; i < padded.length; i++) {
+    out += padded[i] === " " ? " " : SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
+  }
   return out;
 }
 
@@ -69,9 +79,16 @@ function TextScramble({
 
   useEffect(() => {
     if (!loading) return;
-    const length = Math.max(text.length, MIN_LOADING_SCRAMBLE_LENGTH);
-    const id = setInterval(() => setDisplay(randomScrambleString(length)), LOADING_SCRAMBLE_INTERVAL_MS);
-    return () => clearInterval(id);
+    const update = () => setDisplay(scrambleLike(text, MIN_LOADING_SCRAMBLE_LENGTH));
+    // setInterval's first tick only fires after a full LOADING_SCRAMBLE_INTERVAL_MS, which left
+    // the previous (stale) text visibly sitting there for a beat right after the button is
+    // pressed. A rAF-scheduled first update covers that gap with a near-immediate frame instead.
+    const frame = requestAnimationFrame(update);
+    const id = setInterval(update, LOADING_SCRAMBLE_INTERVAL_MS);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearInterval(id);
+    };
   }, [loading, text]);
 
   useEffect(() => {
@@ -118,7 +135,14 @@ function TextScramble({
   return (
     <span className={className}>
       {prefix}
-      <span aria-hidden="true">{display}</span>
+      {/* font-mono: every glyph in the scramble charset renders at a fixed advance width, so the
+          scrambled portion's own rendered width never fluctuates between random draws — without
+          this, a proportional font visibly shifts any static text sharing its line (e.g. the
+          "Generate one at " prefix) left/right as the scramble cycles through different-width
+          characters. */}
+      <span aria-hidden="true" className="font-mono">
+        {display}
+      </span>
     </span>
   );
 }
