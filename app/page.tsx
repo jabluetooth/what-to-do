@@ -188,6 +188,64 @@ type FlowState =
     }
   | { phase: "error"; message: string };
 
+/** One small badge icon per PRD section key (lib/llm/prd.ts's PRD_SECTION_DEFS) — purely
+    decorative next to each card's title, so always aria-hidden; the visible title text already
+    carries the meaning. Falls back to a plain generic square for any section key not listed
+    here, since the underlying section list is LLM-driven and could in principle add one. */
+function getSectionIcon(key: string) {
+  const common = { viewBox: "0 0 24 24", className: "h-3.5 w-3.5", "aria-hidden": true } as const;
+  switch (key) {
+    case "problem_statement":
+      return (
+        <svg {...common} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <circle cx="12" cy="12" r="9" />
+          <line x1="12" y1="7" x2="12" y2="13" />
+          <circle cx="12" cy="16.5" r="0.75" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "target_user":
+      return (
+        <svg {...common} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="8" r="4" />
+          <path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7" />
+        </svg>
+      );
+    case "core_features":
+      return (
+        <svg {...common} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="4 12 9 17 20 6" />
+        </svg>
+      );
+    case "user_stories":
+      return (
+        <svg {...common} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="4" width="18" height="12" rx="2" />
+          <path d="M8 20l3-4h2l3 4" />
+        </svg>
+      );
+    case "out_of_scope":
+      return (
+        <svg {...common} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <circle cx="12" cy="12" r="9" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      );
+    case "complexity_estimate":
+      return (
+        <svg {...common} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="9" />
+          <polyline points="12 7 12 12 15.5 14" />
+        </svg>
+      );
+    default:
+      return (
+        <svg {...common} fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="4" y="4" width="16" height="16" rx="2" />
+        </svg>
+      );
+  }
+}
+
 const ABOUT_STEPS = [
   {
     title: "Start with an idea",
@@ -261,6 +319,16 @@ export default function Home() {
   const [titlePlay, setTitlePlay] = useState(0);
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [showSignInModal, setShowSignInModal] = useState(false);
+
+  // Slideshow transition (hero/clarifying -> result/converted), forward-only: once a PRD exists
+  // there's no in-app path back to the hero except "Start over," which resets everything and
+  // isn't worth animating. showHeroSlide keeps the hero mounted for the exit animation's
+  // duration after the phase has already moved on; heroExiting/resultEntering just drive the
+  // CSS transforms.
+  const isPostPrd = state.phase === "result" || state.phase === "converted";
+  const [showHeroSlide, setShowHeroSlide] = useState(!isPostPrd);
+  const [heroExiting, setHeroExiting] = useState(false);
+  const [resultEntering, setResultEntering] = useState(false);
 
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [draftContent, setDraftContent] = useState("");
@@ -441,6 +509,45 @@ export default function Home() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showManualForm]);
+
+  useEffect(() => {
+    if (isPostPrd) {
+      if (!showHeroSlide) return; // already fully transitioned, nothing to do
+      const startExit = setTimeout(() => setHeroExiting(true), 0);
+      const exitTimer = setTimeout(() => setShowHeroSlide(false), 500);
+      return () => {
+        clearTimeout(startExit);
+        clearTimeout(exitTimer);
+      };
+    }
+    // Went back to the hero (Start over) — snap instantly rather than animating a reverse slide.
+    const resetTimer = setTimeout(() => {
+      setShowHeroSlide(true);
+      setHeroExiting(false);
+    }, 0);
+    return () => clearTimeout(resetTimer);
+  }, [isPostPrd, showHeroSlide]);
+
+  useEffect(() => {
+    if (!isPostPrd) {
+      const resetTimer = setTimeout(() => setResultEntering(false), 0);
+      return () => clearTimeout(resetTimer);
+    }
+    // resultEntering is already false here — it was set (or defaulted) that way by the branch
+    // above during every render where isPostPrd was false, which is always true immediately
+    // before this transition. Mounts off-screen (translate-x-full, see the JSX below) for one
+    // paint, then flips to trigger the CSS transition on the next frame — flipping both in the
+    // same tick would skip straight to the end state with no animation, since the browser needs
+    // a committed "before" frame.
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setResultEntering(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [isPostPrd]);
 
   async function submitPrompt(promptText: string, hintOverrides?: Partial<ReturnType<typeof hints>>) {
     if (!promptText.trim()) return;
@@ -853,6 +960,13 @@ export default function Home() {
       </nav>
 
       <main className="flex-1 mx-auto w-full max-w-2xl px-6 pt-20 pb-16">
+      <div className="relative">
+      {showHeroSlide && (
+        <div
+          className={`transition-transform duration-500 ease-in-out ${
+            heroExiting ? "absolute inset-0 w-full -translate-x-full" : "translate-x-0"
+          }`}
+        >
       {(state.phase === "idle" || state.phase === "submitting" || state.phase === "error") && (
         <>
           <div className="relative mt-8 pb-40 text-center">
@@ -1012,7 +1126,15 @@ export default function Home() {
           </p>
         </form>
       )}
+        </div>
+      )}
 
+      {isPostPrd && (
+        <div
+          className={`transition-transform duration-500 ease-in-out ${
+            resultEntering ? "translate-x-0" : "translate-x-full"
+          }`}
+        >
       {state.phase === "result" && (
         <div className="mt-8 space-y-6">
           {sessionTtlSeconds !== null && sessionTtlSeconds < TIMEOUT_WARNING_THRESHOLD_SECONDS ? (
@@ -1067,77 +1189,93 @@ export default function Home() {
               {sectionError}
             </p>
           )}
-          {state.sections.map((section) => {
-            const isEditing = editingKey === section.key;
-            const isBusy = sectionBusyKey === section.key;
-            const anyBusy = sectionBusyKey !== null;
 
-            return (
-              <section key={section.key}>
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-lg font-semibold">{section.title}</h2>
-                  {!isEditing && (
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        onClick={() => startEdit(section)}
-                        disabled={anyBusy}
-                        className="text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:underline disabled:opacity-50"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => regenerateSection(section.key)}
-                        disabled={anyBusy}
-                        className="text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:underline disabled:opacity-50"
-                      >
-                        {isBusy ? "Regenerating…" : "Regenerate"}
-                      </button>
-                    </div>
-                  )}
-                </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
+              Product Requirements
+            </p>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {state.sections.map((section) => {
+                const isEditing = editingKey === section.key;
+                const isBusy = sectionBusyKey === section.key;
+                const anyBusy = sectionBusyKey !== null;
 
-                {isEditing ? (
-                  <div className="mt-1 space-y-2">
-                    <label htmlFor={`${sectionEditId}-${section.key}`} className="sr-only">
-                      Edit {section.title}
-                    </label>
-                    <textarea
-                      id={`${sectionEditId}-${section.key}`}
-                      value={draftContent}
-                      onChange={(e) => setDraftContent(e.target.value)}
-                      rows={4}
-                      disabled={isBusy}
-                      className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => saveEdit(section.key)}
-                        disabled={isBusy || !draftContent.trim()}
-                        className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-                      >
-                        {isBusy ? "Saving…" : "Save"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={cancelEdit}
-                        disabled={isBusy}
-                        className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-                      >
-                        Cancel
-                      </button>
+                return (
+                  <section
+                    key={section.key}
+                    className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] p-4"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900">
+                          {getSectionIcon(section.key)}
+                        </span>
+                        <h2 className="text-sm font-semibold">{section.title}</h2>
+                      </div>
+                      {!isEditing && (
+                        <div className="flex shrink-0 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => startEdit(section)}
+                            disabled={anyBusy}
+                            className="rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-white/10 disabled:opacity-50"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => regenerateSection(section.key)}
+                            disabled={anyBusy}
+                            className="rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-white/10 disabled:opacity-50"
+                          >
+                            {isBusy ? "Regenerating…" : "Regenerate"}
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ) : (
-                  <p className="mt-1 whitespace-pre-wrap text-sm text-neutral-700 dark:text-neutral-300">
-                    {isBusy ? "Regenerating…" : section.content}
-                  </p>
-                )}
-              </section>
-            );
-          })}
+
+                    {isEditing ? (
+                      <div className="mt-2 space-y-2">
+                        <label htmlFor={`${sectionEditId}-${section.key}`} className="sr-only">
+                          Edit {section.title}
+                        </label>
+                        <textarea
+                          id={`${sectionEditId}-${section.key}`}
+                          value={draftContent}
+                          onChange={(e) => setDraftContent(e.target.value)}
+                          rows={4}
+                          disabled={isBusy}
+                          className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => saveEdit(section.key)}
+                            disabled={isBusy || !draftContent.trim()}
+                            className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                          >
+                            {isBusy ? "Saving…" : "Save"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEdit}
+                            disabled={isBusy}
+                            className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-600 dark:text-neutral-400">
+                        {isBusy ? "Regenerating…" : section.content}
+                      </p>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+          </div>
 
           <div className="border-t border-neutral-200 dark:border-neutral-800 pt-6">
             <div className="flex items-center justify-between gap-2">
@@ -1512,6 +1650,9 @@ export default function Home() {
           </button>
         </div>
       )}
+        </div>
+      )}
+      </div>
       </main>
 
       <section id="about" className="mx-auto w-full max-w-2xl px-6 py-24 border-t border-neutral-200 dark:border-neutral-800">
