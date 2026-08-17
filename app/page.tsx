@@ -868,13 +868,13 @@ export default function Home() {
                 />
               </p>
 
-              {idea && !ideaLoading && (
+              {idea && (
                 <div className="mt-6 flex flex-col items-center gap-3">
                   <span className="inline-block rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs uppercase tracking-wide text-neutral-500">
-                    {idea.platformTag}
+                    <TextScramble text={idea.platformTag} play={scrambleKey} loading={ideaLoading} />
                   </span>
                   <p className="mx-auto max-w-prose text-base text-neutral-700 dark:text-neutral-300">
-                    {idea.description}
+                    <TextScramble text={idea.description} play={scrambleKey} loading={ideaLoading} />
                   </p>
                 </div>
               )}
