@@ -1639,7 +1639,7 @@ export default function Home() {
 
       {showManualForm && (
         <div
-          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 backdrop-blur-sm sm:items-center sm:px-4"
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 backdrop-blur-sm"
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowManualForm(false);
           }}
@@ -1648,17 +1648,17 @@ export default function Home() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="manual-form-title"
-            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl [animation:slide-up-sheet_0.3s_ease-out] sm:rounded-2xl sm:[animation:none]"
+            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl [animation:slide-up-sheet_0.3s_ease-out]"
           >
-            <div className="flex items-start justify-between gap-4">
-              <h2 id="manual-form-title" className="text-lg font-semibold">
+            <div className="relative">
+              <h2 id="manual-form-title" className="text-center text-lg font-semibold">
                 Describe your own idea
               </h2>
               <button
                 type="button"
                 onClick={() => setShowManualForm(false)}
                 aria-label="Close"
-                className="rounded-full p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-white/10 dark:hover:text-white"
+                className="absolute right-0 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-white/10 dark:hover:text-white"
               >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
