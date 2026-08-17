@@ -16,13 +16,16 @@ function formatDuration(totalSeconds: number): string {
 }
 
 const SCRAMBLE_CHARS = "!<>-_\\/[]{}—=+*^?#0123456789";
-const SCRAMBLE_DURATION_MS = 1400;
+const SCRAMBLE_DURATION_MS = 2800;
+// How often the not-yet-revealed characters reroll to a new random glyph during the reveal —
+// independent of SCRAMBLE_DURATION_MS (which governs the overall left-to-right sweep).
+const SCRAMBLE_CHAR_INTERVAL_MS = 90;
 const LOADING_SCRAMBLE_INTERVAL_MS = 140;
 // A short target string (e.g. "random" at 6 chars) made the continuous loading scramble narrow
 // enough to visibly shift/reflow the centered heading around it — flooring the scrambled length
 // keeps it at least this wide regardless of what the underlying text is.
 const MIN_LOADING_SCRAMBLE_LENGTH = 6;
-const PLACEHOLDER_TARGET = "Get a PRD, tech stack, boilerplate, and live preview from one idea.";
+const PLACEHOLDER_TARGET = "Get a PRD, tech stack, and boilerplate from one idea.";
 
 function randomScrambleString(length: number): string {
   let out = "";
@@ -80,12 +83,24 @@ function TextScramble({
     lastPlayRef.current = play;
 
     const start = performance.now();
+    // Reveal progress (lockedCount) still advances every frame for a smooth left-to-right
+    // sweep, but the random glyphs standing in for not-yet-revealed characters only reroll
+    // every SCRAMBLE_CHAR_INTERVAL_MS — rerolling all of them on every animation frame (~60/sec)
+    // reads as an imperceptible blur rather than a visible shuffle.
+    let lastRerollAt = -Infinity;
+    let randomChars: string[] = [];
     function tick(now: number) {
       const progress = Math.min((now - start) / SCRAMBLE_DURATION_MS, 1);
       const lockedCount = Math.floor(progress * text.length);
+
+      if (now - lastRerollAt >= SCRAMBLE_CHAR_INTERVAL_MS || randomChars.length !== text.length) {
+        randomChars = Array.from({ length: text.length }, () => SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)]);
+        lastRerollAt = now;
+      }
+
       let out = "";
       for (let i = 0; i < text.length; i++) {
-        out += i < lockedCount || text[i] === " " ? text[i] : SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
+        out += i < lockedCount || text[i] === " " ? text[i] : randomChars[i];
       }
       setDisplay(out);
       if (progress < 1) {
@@ -813,7 +828,7 @@ export default function Home() {
                 {idea || ideaLoading ? "Your next app" : "Stuck on what to build?"}
               </p>
 
-              <h2 className="mt-3 text-5xl sm:text-6xl font-bold tracking-tight">
+              <h2 className="mt-3 whitespace-nowrap text-2xl sm:text-4xl md:text-5xl font-bold tracking-tight">
                 <TextScramble
                   text={idea ? idea.title : "random"}
                   prefix={idea ? "" : "Generate one at "}
