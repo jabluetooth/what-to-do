@@ -751,92 +751,113 @@ export default function Home() {
       <main className="flex-1 mx-auto w-full max-w-2xl px-6 pt-28 pb-16">
       {(state.phase === "idle" || state.phase === "submitting" || state.phase === "error") && (
         <>
-          <div className="mt-10 text-center">
-            <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
-              {idea || ideaLoading ? "Your next app" : "Stuck on what to build?"}
+          <div className="relative mt-16 overflow-hidden pb-28 text-center">
+            {/* Decorative watermark: purely cosmetic, so it's not part of the a11y tree. Reserved
+                space below the real content (pb-28 above) is what it lives in — sized to roughly
+                fit the container's width rather than a fixed huge size, so it doesn't collide with
+                or dwarf the actual copy. Translated down by a quarter of its own height so
+                overflow-hidden above crops the last 1/4 — the mask then fades the visible 3/4
+                toward transparent as it approaches that crop line, instead of a hard edge. */}
+            <p
+              aria-hidden="true"
+              className="pointer-events-none absolute left-1/2 bottom-0 z-0 -translate-x-1/2 translate-y-1/4 select-none whitespace-nowrap text-[3.25rem] sm:text-[4.5rem] md:text-[5.5rem] font-extrabold tracking-tighter text-neutral-900/[0.05] dark:text-white/[0.045] blur-[2px]"
+              style={{
+                maskImage: "linear-gradient(to bottom, black 0%, black 55%, transparent 100%)",
+                WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 55%, transparent 100%)",
+              }}
+            >
+              WHAT TO DO?
             </p>
 
-            <h2 className="mt-2 text-4xl sm:text-5xl font-bold tracking-tight">
-              <TextScramble text={idea ? idea.title : PLACEHOLDER_TITLE} play={scrambleKey} loading={ideaLoading} />
-            </h2>
-            <p className="mt-2 text-lg sm:text-xl text-neutral-500 dark:text-neutral-400">
-              <TextScramble
-                text={idea ? idea.targetUser : PLACEHOLDER_TARGET}
-                play={scrambleKey}
-                loading={ideaLoading}
-              />
-            </p>
+            <div className="relative z-10">
+              <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
+                {idea || ideaLoading ? "Your next app" : "Stuck on what to build?"}
+              </p>
 
-            {idea && !ideaLoading && (
-              <div className="mt-4 flex flex-col items-center gap-2">
-                <span className="inline-block rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs uppercase tracking-wide text-neutral-500">
-                  {idea.platformTag}
-                </span>
-                <p className="mx-auto max-w-prose text-sm text-neutral-700 dark:text-neutral-300">{idea.description}</p>
-              </div>
-            )}
+              <h2 className="mt-3 text-4xl sm:text-5xl font-bold tracking-tight">
+                <TextScramble text={idea ? idea.title : PLACEHOLDER_TITLE} play={scrambleKey} loading={ideaLoading} />
+              </h2>
+              <p className="mt-3 text-base sm:text-lg text-neutral-500 dark:text-neutral-400">
+                <TextScramble
+                  text={idea ? idea.targetUser : PLACEHOLDER_TARGET}
+                  play={scrambleKey}
+                  loading={ideaLoading}
+                />
+              </p>
 
-            {/* A visible shuffle is distracting to announce frame-by-frame — screen readers get
-                just the loading state and the final landed idea. */}
-            <p className="sr-only" role="status" aria-live="polite">
-              {ideaLoading && "Generating an idea…"}
-              {idea && !ideaLoading && `Idea: ${idea.title}, ${idea.targetUser}. ${idea.description}`}
-            </p>
-
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-3">
-              {!idea && (
-                <button
-                  type="button"
-                  onClick={generateIdea}
-                  disabled={ideaLoading || isSubmitting}
-                  className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-5 py-2.5 text-sm font-medium disabled:opacity-50"
-                >
-                  {ideaLoading ? "Generating…" : "Generate an app idea"}
-                </button>
+              {idea && !ideaLoading && (
+                <div className="mt-6 flex flex-col items-center gap-3">
+                  <span className="inline-block rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs uppercase tracking-wide text-neutral-500">
+                    {idea.platformTag}
+                  </span>
+                  <p className="mx-auto max-w-prose text-sm text-neutral-700 dark:text-neutral-300">
+                    {idea.description}
+                  </p>
+                </div>
               )}
 
-              {idea && (
-                <>
-                  <button
-                    type="button"
-                    onClick={startPrdFromIdea}
-                    disabled={isSubmitting}
-                    className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-5 py-2.5 text-sm font-medium disabled:opacity-50"
-                  >
-                    {isSubmitting ? "Generating…" : "Generate PRD"}
-                  </button>
+              {/* A visible shuffle is distracting to announce frame-by-frame — screen readers get
+                  just the loading state and the final landed idea. */}
+              <p className="sr-only" role="status" aria-live="polite">
+                {ideaLoading && "Generating an idea…"}
+                {idea && !ideaLoading && `Idea: ${idea.title}, ${idea.targetUser}. ${idea.description}`}
+              </p>
+
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-x-4 gap-y-4">
+                {!idea && (
                   <button
                     type="button"
                     onClick={generateIdea}
                     disabled={ideaLoading || isSubmitting}
-                    className="rounded-md border border-neutral-300 dark:border-neutral-700 px-5 py-2.5 text-sm font-medium disabled:opacity-50"
+                    className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-5 py-2.5 text-sm font-medium disabled:opacity-50"
                   >
-                    {ideaLoading ? "Generating…" : "Regenerate"}
+                    {ideaLoading ? "Generating…" : "Generate an app idea"}
                   </button>
-                </>
+                )}
+
+                {idea && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={startPrdFromIdea}
+                      disabled={isSubmitting}
+                      className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-5 py-2.5 text-sm font-medium disabled:opacity-50"
+                    >
+                      {isSubmitting ? "Generating…" : "Generate PRD"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={generateIdea}
+                      disabled={ideaLoading || isSubmitting}
+                      className="rounded-md border border-neutral-300 dark:border-neutral-700 px-5 py-2.5 text-sm font-medium disabled:opacity-50"
+                    >
+                      {ideaLoading ? "Generating…" : "Regenerate"}
+                    </button>
+                  </>
+                )}
+
+                {!showManualForm && (
+                  <button
+                    type="button"
+                    onClick={() => setShowManualForm(true)}
+                    className="text-sm text-neutral-500 dark:text-neutral-400 underline underline-offset-2 hover:text-neutral-900 dark:hover:text-neutral-100"
+                  >
+                    or describe your own idea →
+                  </button>
+                )}
+              </div>
+
+              {ideaError && (
+                <p className="mt-3 text-sm text-red-600 dark:text-red-400" role="status" aria-live="polite">
+                  {ideaError}
+                </p>
               )}
 
-              {!showManualForm && (
-                <button
-                  type="button"
-                  onClick={() => setShowManualForm(true)}
-                  className="text-sm text-neutral-500 dark:text-neutral-400 underline underline-offset-2 hover:text-neutral-900 dark:hover:text-neutral-100"
-                >
-                  or describe your own idea →
-                </button>
-              )}
-            </div>
-
-            {ideaError && (
-              <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="status" aria-live="polite">
-                {ideaError}
+              <p className="mt-4 text-sm" role="status" aria-live="polite">
+                {state.phase === "submitting" && "Generating your PRD, usually under 10 seconds…"}
+                {state.phase === "error" && <span className="text-red-600 dark:text-red-400">{state.message}</span>}
               </p>
-            )}
-
-            <p className="mt-3 text-sm" role="status" aria-live="polite">
-              {state.phase === "submitting" && "Generating your PRD, usually under 10 seconds…"}
-              {state.phase === "error" && <span className="text-red-600 dark:text-red-400">{state.message}</span>}
-            </p>
+            </div>
           </div>
 
           {showManualForm && (
@@ -1454,14 +1475,14 @@ export default function Home() {
       )}
       </main>
 
-      <section id="about" className="mx-auto w-full max-w-2xl px-6 py-20 border-t border-neutral-200 dark:border-neutral-800">
+      <section id="about" className="mx-auto w-full max-w-2xl px-6 py-24 border-t border-neutral-200 dark:border-neutral-800">
         <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">About</p>
-        <h2 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight">From a blank page to a running project</h2>
-        <p className="mt-3 text-neutral-600 dark:text-neutral-400 max-w-prose">
+        <h2 className="mt-4 text-2xl sm:text-3xl font-bold tracking-tight">From a blank page to a running project</h2>
+        <p className="mt-4 text-neutral-600 dark:text-neutral-400 max-w-prose">
           What To Do? turns a single idea into something you can actually run — no account required to try it.
         </p>
 
-        <ol className="mt-8 space-y-6">
+        <ol className="mt-10 space-y-8">
           {ABOUT_STEPS.map((step, i) => (
             <li key={step.title} className="flex gap-4">
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-sm font-semibold">
@@ -1469,37 +1490,37 @@ export default function Home() {
               </span>
               <div>
                 <p className="font-medium">{step.title}</p>
-                <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">{step.body}</p>
+                <p className="mt-1.5 text-sm text-neutral-600 dark:text-neutral-400">{step.body}</p>
               </div>
             </li>
           ))}
         </ol>
       </section>
 
-      <section id="faq" className="mx-auto w-full max-w-2xl px-6 py-20 border-t border-neutral-200 dark:border-neutral-800">
+      <section id="faq" className="mx-auto w-full max-w-2xl px-6 py-24 border-t border-neutral-200 dark:border-neutral-800">
         <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">FAQ</p>
-        <h2 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight">Frequently asked questions</h2>
+        <h2 className="mt-4 text-2xl sm:text-3xl font-bold tracking-tight">Frequently asked questions</h2>
 
-        <dl className="mt-8 space-y-6">
+        <dl className="mt-10 space-y-8">
           {FAQ_ITEMS.map((item) => (
             <div key={item.q}>
               <dt className="font-medium">{item.q}</dt>
-              <dd className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">{item.a}</dd>
+              <dd className="mt-1.5 text-sm text-neutral-600 dark:text-neutral-400">{item.a}</dd>
             </div>
           ))}
         </dl>
       </section>
 
-      <footer className="mx-auto w-full max-w-2xl px-6 pt-12 pb-16 border-t border-neutral-200 dark:border-neutral-800">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-8">
+      <footer className="mx-auto w-full max-w-2xl px-6 pt-16 pb-20 border-t border-neutral-200 dark:border-neutral-800">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-10">
           <div>
             <p className="text-sm font-extrabold tracking-tighter">WTD</p>
-            <p className="mt-2 max-w-xs text-sm text-neutral-500 dark:text-neutral-400">
+            <p className="mt-3 max-w-xs text-sm text-neutral-500 dark:text-neutral-400">
               From an idea to a scoped, scaffolded, running project in one prompt.
             </p>
           </div>
           <div className="flex gap-10 text-sm">
-            <div className="space-y-2">
+            <div className="space-y-3">
               <a
                 href="#about"
                 className="block text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
@@ -1513,7 +1534,7 @@ export default function Home() {
                 FAQ
               </a>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Link
                 href="/account"
                 className="block text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
@@ -1523,7 +1544,7 @@ export default function Home() {
             </div>
           </div>
         </div>
-        <p className="mt-10 text-xs text-neutral-400 dark:text-neutral-600">© 2026 What To Do?</p>
+        <p className="mt-12 text-xs text-neutral-400 dark:text-neutral-600">© 2026 What To Do?</p>
       </footer>
 
       {showSignInModal && (
