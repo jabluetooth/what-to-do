@@ -1038,7 +1038,7 @@ export default function Home() {
                         ? "Boilerplate generated — no Python interpreter was available to check it, review before running."
                         : boilerplateWebContainerCompatible === false
                           ? "Boilerplate generated (Python syntax checked)."
-                          : "Boilerplate generated and validated."}
+                          : "Boilerplate generated (syntax-checked) — open Live Preview to confirm it actually builds and runs."}
                     </p>
                     <a
                       href="/api/boilerplate/download"

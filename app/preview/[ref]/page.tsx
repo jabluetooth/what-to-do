@@ -22,6 +22,26 @@ type PreviewState =
 /** PRD §6.5: preview has a reasonable idle timeout to control resource usage. */
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 
+/**
+ * The server no longer attempts a real install+build itself (see lib/sandbox/validateSyntax.ts)
+ * — this WebContainer boot is now the only place that actually happens, so its outcome is worth
+ * persisting server-side via boilerplateBuildVerified rather than only ever being visible in
+ * this one tab. Only called for genuine code-validity signals (a real install failure, or the
+ * dev server actually starting) — not for infra-level issues (bootstrap fetch failing, the
+ * WebContainer itself throwing on mount), since those aren't evidence about the *generated
+ * code* one way or the other. Module-level, not a component function, since it closes over
+ * nothing reactive — keeps it out of boot()'s dependency chain.
+ */
+function reportValidation(verified: boolean) {
+  fetch("/api/preview/report-validation", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ verified }),
+  }).catch(() => {
+    // best effort — this is a secondary record of what the user can already see in this tab
+  });
+}
+
 export default function PreviewPage() {
   const [state, setState] = useState<PreviewState>({ phase: "loading" });
   const [selectedFile, setSelectedFile] = useState<FlatFile | null>(null);
@@ -68,6 +88,7 @@ export default function PreviewPage() {
       const installCode = await install.exit;
       if (installCode !== 0) {
         setState({ phase: "build-error", log: "npm install failed inside the preview environment." });
+        reportValidation(false);
         return;
       }
 
@@ -77,6 +98,7 @@ export default function PreviewPage() {
 
       instance.on("server-ready", (_port, url) => {
         setState({ phase: "ready", url });
+        reportValidation(true);
         idleTimerRef.current = setTimeout(() => {
           void teardownWebContainer();
           setState({ phase: "timedout" });

@@ -2,7 +2,8 @@ import type { TemplateFile } from "@/lib/pipeline/template";
 import type { PrdSection } from "@/lib/types";
 import { generateBoilerplateFillIn } from "@/lib/llm/boilerplate";
 import { generateFastapiFillIn } from "@/lib/llm/boilerplateFastapi";
-import { validateBoilerplate, validateFastapiBoilerplate, type ValidationResult } from "@/lib/sandbox/validate";
+import { validateFastapiBoilerplate, type ValidationResult } from "@/lib/sandbox/validate";
+import { validateTypeScriptSyntax } from "@/lib/sandbox/validateSyntax";
 
 /**
  * Server-only half of a template's definition, keyed by the same id as its
@@ -33,7 +34,11 @@ export interface TemplateImplementation {
 
 const IMPLEMENTATIONS: Record<string, TemplateImplementation> = {
   "nextjs-postgres-drizzle": {
-    phaseMessages: { install: "Installing dependencies...", build: "Running build check..." },
+    // No "install" phase anymore — validateTypeScriptSyntax never touches disk (see its own
+    // doc comment for why: the previous real pnpm install+build reliably hit ENOSPC on
+    // free-tier serverless /tmp quotas). The deeper "does this actually install and run" check
+    // now happens client-side the first time someone opens the live preview.
+    phaseMessages: { build: "Checking syntax..." },
     async generateFillIn(templateFiles, input, onProgress) {
       await onProgress(20, "Generating routes & models...");
       const fillIn = await generateBoilerplateFillIn(input);
@@ -47,7 +52,7 @@ const IMPLEMENTATIONS: Record<string, TemplateImplementation> = {
       files.push({ path: `app/api/${fillIn.mainResourceName}/route.ts`, content: fillIn.mainRouteFileContent });
       return files;
     },
-    validate: validateBoilerplate,
+    validate: validateTypeScriptSyntax,
   },
   "fastapi-postgres": {
     phaseMessages: { build: "Checking generated Python..." },

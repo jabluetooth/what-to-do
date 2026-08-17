@@ -58,6 +58,17 @@ export interface GuestSession {
    * view instead of booting a live server.
    */
   boilerplateWebContainerCompatible?: boolean;
+  /**
+   * Whether a real install+dev-server boot has actually confirmed this boilerplate works — set
+   * only for WebContainer-compatible boilerplates, by /preview/[ref] reporting back its boot
+   * result (see app/api/preview/report-validation/route.ts). Undefined until that's happened at
+   * least once. Distinct from job success: a job only ever confirms the generated code is
+   * syntactically valid (lib/sandbox/validateSyntax.ts) — the server no longer attempts a real
+   * install+build itself, since that reliably exhausted free-tier serverless disk quotas
+   * (ENOSPC), confirmed live in production. This field is what "actually builds and runs" now
+   * means, and it's earned lazily, client-side, the first time someone opens the preview.
+   */
+  boilerplateBuildVerified?: boolean;
   currentStage: PipelineStage;
   createdAt: string;
   updatedAt: string;
