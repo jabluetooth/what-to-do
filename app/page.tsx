@@ -872,7 +872,7 @@ export default function Home() {
                 <TextScramble
                   text={idea ? idea.title : "random"}
                   prefix="Generate one at "
-                  hidePrefix={!!idea}
+                  hidePrefix={!!idea || ideaLoading}
                   play={titlePlay}
                   loading={ideaLoading}
                 />
