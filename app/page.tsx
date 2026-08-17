@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { signIn } from "next-auth/react";
 import type { PlatformHint, PrdSection, RandomIdea, ScopeSizeHint, StackCategory, StackRecommendation } from "@/lib/types";
 import { STACK_ALTERNATIVES } from "@/lib/pipeline/stackMatrix";
@@ -809,9 +810,12 @@ export default function Home() {
         <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-neutral-200 dark:border-white/10 bg-white/80 dark:bg-neutral-900/70 backdrop-blur-xl shadow-lg p-1.5">
           <Link
             href="/"
-            className="rounded-full px-4 py-2 text-sm font-extrabold tracking-tighter hover:bg-neutral-100 dark:hover:bg-white/10"
+            className="rounded-full px-4 py-2 hover:bg-neutral-100 dark:hover:bg-white/10"
           >
-            WTD
+            {/* Logo.png is a black mark on a transparent background — dark:invert flips it to
+                white for this app's forced-dark theme (see globals.css) while still degrading
+                correctly if that forcing were ever relaxed back to following the OS preference. */}
+            <Image src="/Logo.png" alt="What To Do?" width={96} height={54} className="h-5 w-auto dark:invert" priority />
           </Link>
           <div className="hidden sm:block h-4 w-px bg-neutral-200 dark:bg-white/10 mx-1" />
           <div className="hidden sm:flex items-center gap-1">
@@ -1549,7 +1553,7 @@ export default function Home() {
       <footer className="mx-auto w-full max-w-2xl px-6 pt-16 pb-20 border-t border-neutral-200 dark:border-neutral-800">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-10">
           <div>
-            <p className="text-sm font-extrabold tracking-tighter">WTD</p>
+            <Image src="/Logo.png" alt="What To Do?" width={96} height={54} className="h-5 w-auto dark:invert" />
             <p className="mt-3 max-w-xs text-sm text-neutral-500 dark:text-neutral-400">
               From an idea to a scoped, scaffolded, running project in one prompt.
             </p>
