@@ -16,8 +16,12 @@ function formatDuration(totalSeconds: number): string {
 }
 
 const SCRAMBLE_CHARS = "!<>-_\\/[]{}—=+*^?#0123456789";
-const SCRAMBLE_DURATION_MS = 900;
-const LOADING_SCRAMBLE_INTERVAL_MS = 90;
+const SCRAMBLE_DURATION_MS = 1400;
+const LOADING_SCRAMBLE_INTERVAL_MS = 140;
+// A short target string (e.g. "random" at 6 chars) made the continuous loading scramble narrow
+// enough to visibly shift/reflow the centered heading around it — flooring the scrambled length
+// keeps it at least this wide regardless of what the underlying text is.
+const MIN_LOADING_SCRAMBLE_LENGTH = 6;
 const PLACEHOLDER_TARGET = "Get a PRD, tech stack, boilerplate, and live preview from one idea.";
 
 function randomScrambleString(length: number): string {
@@ -42,11 +46,18 @@ function TextScramble({
   text,
   play,
   loading,
+  prefix,
   className,
 }: {
   text: string;
   play: number;
   loading: boolean;
+  /** Static text rendered before the scrambled part — visible and accessible, never scrambled
+      itself. Kept in the same component instance as the scrambled part (not a sibling swapped in
+      via a ternary) specifically so switching it on/off never remounts this component — an
+      earlier version did exactly that between the placeholder and a real idea, which reset the
+      "already played this reveal" tracking and made the reveal silently skip itself. */
+  prefix?: string;
   className?: string;
 }) {
   const [display, setDisplay] = useState(text);
@@ -55,7 +66,8 @@ function TextScramble({
 
   useEffect(() => {
     if (!loading) return;
-    const id = setInterval(() => setDisplay(randomScrambleString(text.length)), LOADING_SCRAMBLE_INTERVAL_MS);
+    const length = Math.max(text.length, MIN_LOADING_SCRAMBLE_LENGTH);
+    const id = setInterval(() => setDisplay(randomScrambleString(length)), LOADING_SCRAMBLE_INTERVAL_MS);
     return () => clearInterval(id);
   }, [loading, text]);
 
@@ -89,8 +101,9 @@ function TextScramble({
   }, [loading, play, text]);
 
   return (
-    <span className={className} aria-hidden="true">
-      {display}
+    <span className={className}>
+      {prefix}
+      <span aria-hidden="true">{display}</span>
     </span>
   );
 }
@@ -801,13 +814,12 @@ export default function Home() {
               </p>
 
               <h2 className="mt-3 text-5xl sm:text-6xl font-bold tracking-tight">
-                {idea ? (
-                  <TextScramble text={idea.title} play={scrambleKey} loading={ideaLoading} />
-                ) : (
-                  <>
-                    Generate one at <TextScramble text="random" play={titlePlay} loading={ideaLoading} />
-                  </>
-                )}
+                <TextScramble
+                  text={idea ? idea.title : "random"}
+                  prefix={idea ? "" : "Generate one at "}
+                  play={titlePlay}
+                  loading={ideaLoading}
+                />
               </h2>
               <p className="mt-3 text-base sm:text-lg text-neutral-500 dark:text-neutral-400">
                 <TextScramble
