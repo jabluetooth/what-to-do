@@ -303,16 +303,12 @@ function getStackCategoryIcon(key: StackCategory) {
  * base of the glyphs) than the mask's own fade zone means the fade has real room to play out
  * gradually before it reaches that crop line, instead of both happening over the same short span
  * and reading as one abrupt edge.
- *
- * `compact` shrinks the clamp for call sites with a smaller reserved gutter (the result screens,
- * which are mostly full of real content) — without it, the full-size glyph is taller than that
- * gutter and spills upward into whatever precedes it.
  */
-function Watermark({ compact = false }: { compact?: boolean }) {
+function Watermark() {
   return (
     <div
       className="pointer-events-none absolute bottom-0 left-1/2 z-0 w-screen -translate-x-1/2 overflow-hidden"
-      style={{ height: "0.92em", fontSize: compact ? "clamp(2rem, 8vw, 9rem)" : "clamp(3rem, 14vw, 18rem)" }}
+      style={{ height: "0.92em", fontSize: "clamp(3rem, 14vw, 18rem)" }}
     >
       <p
         aria-hidden="true"
@@ -1286,12 +1282,12 @@ export default function Home() {
             </p>
           )}
 
-          {/* Same watermark as the hero, sized down for a page that's mostly full of content —
-              placed here, outside the slide switcher below, because that switcher needs its own
-              overflow-hidden to clip the inactive slide during the transform, and an
-              overflow-hidden ancestor would clip the watermark's own full-bleed breakout too. */}
-          <div className="relative pb-24">
-            <Watermark compact />
+          {/* Same watermark, same size/placement as the hero's — placed here, outside the slide
+              switcher below, because that switcher needs its own overflow-hidden to clip the
+              inactive slide during the transform, and an overflow-hidden ancestor would clip the
+              watermark's own full-bleed breakout too. */}
+          <div className="relative pb-40">
+            <Watermark />
           </div>
 
           <div className="relative overflow-hidden">
@@ -1742,13 +1738,15 @@ export default function Home() {
           </div>
 
           {!showExitConfirm ? (
-            <button
-              type="button"
-              onClick={requestStartOver}
-              className="rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium"
-            >
-              Start over
-            </button>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={requestStartOver}
+                className="text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:underline"
+              >
+                Start over →
+              </button>
+            </div>
           ) : (
             <div className="rounded-md border border-neutral-300 dark:border-neutral-700 p-4 space-y-2">
               <p className="text-sm font-medium">Sign up to save this project before starting over?</p>
