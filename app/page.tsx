@@ -393,6 +393,13 @@ export default function Home() {
   const isSelectedBusy = selectedSection ? sectionBusyKey === selectedSection.key : false;
   const anySectionBusy = sectionBusyKey !== null;
 
+  // Both slides stay permanently mounted (unlike the hero->result transition, which unmounts the
+  // hero after it exits) — the user moves back and forth between PRD and Tech Stack freely, so
+  // there's no one-way "done with this" moment to unmount on, and keeping both mounted means a
+  // plain CSS transform transition suffices without the double-rAF dance the hero uses to make a
+  // freshly-mounted element animate from its starting position.
+  const [activeSlide, setActiveSlide] = useState<"prd" | "stack">("prd");
+
   const [stack, setStack] = useState<StackRecommendation | null>(null);
   const [stackStale, setStackStale] = useState(false);
   const [stackLoading, setStackLoading] = useState(false);
@@ -633,6 +640,7 @@ export default function Home() {
       setState({ phase: "result", sections: data.sections, lowConfidence: data.lowConfidence });
       setShowManualForm(false);
       setSelectedSectionKey(null);
+      setActiveSlide("prd");
     } catch {
       setState({ phase: "error", message: "Network error — please try again." });
     }
@@ -673,6 +681,7 @@ export default function Home() {
 
       setState({ phase: "result", sections: data.sections, lowConfidence: data.lowConfidence });
       setSelectedSectionKey(null);
+      setActiveSlide("prd");
     } catch {
       setState({ phase: "error", message: "Network error — please try again." });
     }
@@ -1239,6 +1248,13 @@ export default function Home() {
             </p>
           )}
 
+          <div className="relative overflow-hidden">
+            <div
+              className={`space-y-6 transition-transform duration-500 ease-in-out ${
+                activeSlide === "prd" ? "translate-x-0" : "absolute inset-0 w-full -translate-x-full"
+              }`}
+              inert={activeSlide !== "prd"}
+            >
           {state.lowConfidence && (
             <div className="rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
               This PRD is low-confidence — the idea was still pretty thin after clarification. Worth reviewing closely before generating a stack.
@@ -1364,6 +1380,29 @@ export default function Home() {
             </div>
           </div>
 
+          <button
+            type="button"
+            onClick={() => setActiveSlide("stack")}
+            className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium"
+          >
+            Continue to Tech Stack →
+          </button>
+            </div>
+
+            <div
+              className={`space-y-6 transition-transform duration-500 ease-in-out ${
+                activeSlide === "stack" ? "translate-x-0" : "absolute inset-0 w-full translate-x-full"
+              }`}
+              inert={activeSlide !== "stack"}
+            >
+          <button
+            type="button"
+            onClick={() => setActiveSlide("prd")}
+            className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium"
+          >
+            ← Back to PRD
+          </button>
+
           <div className="border-t border-neutral-200 dark:border-neutral-800 pt-6">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-xl font-semibold">Tech Stack</h2>
@@ -1385,44 +1424,59 @@ export default function Home() {
               (e.g. "I know FastAPI") once a PRD already exists. Editable here too, and sent on
               every generate/regenerate.
             */}
-            <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-              Prefilled from your answers above — adjust these to refine the stack recommendation.
-            </p>
-            <div className="mt-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <select
-                id={platformId}
-                value={platform}
-                onChange={(e) => setPlatform(e.target.value as PlatformHint | "")}
-                disabled={stackLoading}
-                aria-label="Platform preference"
-                className="rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-2 py-1.5 text-xs"
-              >
-                <option value="">Platform: no preference</option>
-                <option value="web">Platform: Web</option>
-                <option value="mobile">Platform: Mobile</option>
-              </select>
-              <select
-                id={scopeId}
-                value={scopeSize}
-                onChange={(e) => setScopeSize(e.target.value as ScopeSizeHint | "")}
-                disabled={stackLoading}
-                aria-label="Scope size"
-                className="rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-2 py-1.5 text-xs"
-              >
-                <option value="">Scope: no preference</option>
-                <option value="weekend">Scope: Weekend project</option>
-                <option value="mvp">Scope: MVP</option>
-                <option value="production">Scope: Production app</option>
-              </select>
-              <input
-                id={stackId}
-                type="text"
-                value={stackFamiliarity}
-                onChange={(e) => setStackFamiliarity(e.target.value)}
-                disabled={stackLoading}
-                placeholder="Stacks you know, e.g. FastAPI, Vue"
-                className="rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-2 py-1.5 text-xs"
-              />
+            <div className="mt-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] p-4">
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                Prefilled from your answers above — adjust these to refine the stack recommendation.
+              </p>
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label htmlFor={platformId} className="block text-xs font-medium text-neutral-600 dark:text-neutral-400">
+                    Platform
+                  </label>
+                  <select
+                    id={platformId}
+                    value={platform}
+                    onChange={(e) => setPlatform(e.target.value as PlatformHint | "")}
+                    disabled={stackLoading}
+                    className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+                  >
+                    <option value="">No preference</option>
+                    <option value="web">Web</option>
+                    <option value="mobile">Mobile</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor={scopeId} className="block text-xs font-medium text-neutral-600 dark:text-neutral-400">
+                    Scope
+                  </label>
+                  <select
+                    id={scopeId}
+                    value={scopeSize}
+                    onChange={(e) => setScopeSize(e.target.value as ScopeSizeHint | "")}
+                    disabled={stackLoading}
+                    className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+                  >
+                    <option value="">No preference</option>
+                    <option value="weekend">Weekend project</option>
+                    <option value="mvp">MVP</option>
+                    <option value="production">Production app</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor={stackId} className="block text-xs font-medium text-neutral-600 dark:text-neutral-400">
+                    Stacks you know
+                  </label>
+                  <input
+                    id={stackId}
+                    type="text"
+                    value={stackFamiliarity}
+                    onChange={(e) => setStackFamiliarity(e.target.value)}
+                    disabled={stackLoading}
+                    placeholder="e.g. FastAPI, Vue"
+                    className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+                  />
+                </div>
+              </div>
             </div>
 
             {stackStale && stack && (
@@ -1635,6 +1689,8 @@ export default function Home() {
               )}
             </div>
           )}
+            </div>
+          </div>
 
           {!showExitConfirm ? (
             <button
