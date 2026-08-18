@@ -1211,105 +1211,116 @@ export default function Home() {
             <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
               Product Requirements
             </p>
-            <div className="mt-3 flex flex-col sm:flex-row sm:items-start gap-3">
-              <div className="w-full sm:w-56 shrink-0 overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] divide-y divide-neutral-200 dark:divide-neutral-800">
-                {state.sections.map((section) => {
-                  const isSelected = selectedSectionKey === section.key;
-                  return (
-                    <button
-                      key={section.key}
-                      type="button"
-                      onClick={() => selectSection(section.key)}
-                      aria-pressed={isSelected}
-                      className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold transition-colors ${
-                        isSelected
-                          ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
-                          : "hover:bg-neutral-100 dark:hover:bg-white/[0.04]"
-                      }`}
-                    >
-                      <span
-                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-                          isSelected
-                            ? "bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100"
-                            : "bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900"
-                        }`}
-                      >
-                        {getSectionIcon(section.key)}
-                      </span>
-                      <span>{section.title}</span>
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="mt-3 flex justify-center">
+              <div
+                className={`overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] transition-[width] duration-300 ease-in-out w-full ${
+                  selectedSection ? "" : "sm:w-56"
+                }`}
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-[14rem_minmax(0,1fr)]">
+                  <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                    {state.sections.map((section) => {
+                      const isSelected = selectedSectionKey === section.key;
+                      return (
+                        <button
+                          key={section.key}
+                          type="button"
+                          onClick={() => selectSection(section.key)}
+                          aria-pressed={isSelected}
+                          className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold transition-colors ${
+                            isSelected
+                              ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
+                              : "hover:bg-neutral-100 dark:hover:bg-white/[0.04]"
+                          }`}
+                        >
+                          <span
+                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
+                              isSelected
+                                ? "bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100"
+                                : "bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900"
+                            }`}
+                          >
+                            {getSectionIcon(section.key)}
+                          </span>
+                          <span>{section.title}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
 
-              {selectedSection && (
-                <div
-                  key={selectedSection.key}
-                  className="w-full flex-1 min-w-0 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] p-4 [animation:fade-in-up_0.2s_ease-out]"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <h2 className="text-sm font-semibold">{selectedSection.title}</h2>
-                    {!isEditingSelected && (
-                      <div className="flex shrink-0 gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => startEdit(selectedSection)}
-                          disabled={anySectionBusy}
-                          className="rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-white/10 disabled:opacity-50"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => regenerateSection(selectedSection.key)}
-                          disabled={anySectionBusy}
-                          className="rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-white/10 disabled:opacity-50"
-                        >
-                          {isSelectedBusy ? "Regenerating…" : "Regenerate"}
-                        </button>
+                  <div
+                    className={`overflow-hidden border-neutral-200 dark:border-neutral-800 ${
+                      selectedSection ? "border-t sm:border-t-0 sm:border-l" : ""
+                    }`}
+                  >
+                    {selectedSection && (
+                      <div key={selectedSection.key} className="w-full p-4 [animation:fade-in-up_0.2s_ease-out]">
+                        <div className="flex items-start justify-between gap-2">
+                          <h2 className="text-sm font-semibold">{selectedSection.title}</h2>
+                          {!isEditingSelected && (
+                            <div className="flex shrink-0 gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => startEdit(selectedSection)}
+                                disabled={anySectionBusy}
+                                className="rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-white/10 disabled:opacity-50"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => regenerateSection(selectedSection.key)}
+                                disabled={anySectionBusy}
+                                className="rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-white/10 disabled:opacity-50"
+                              >
+                                {isSelectedBusy ? "Regenerating…" : "Regenerate"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {isEditingSelected ? (
+                          <div className="mt-2 space-y-2">
+                            <label htmlFor={`${sectionEditId}-${selectedSection.key}`} className="sr-only">
+                              Edit {selectedSection.title}
+                            </label>
+                            <textarea
+                              id={`${sectionEditId}-${selectedSection.key}`}
+                              value={draftContent}
+                              onChange={(e) => setDraftContent(e.target.value)}
+                              rows={4}
+                              disabled={isSelectedBusy}
+                              className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => saveEdit(selectedSection.key)}
+                                disabled={isSelectedBusy || !draftContent.trim()}
+                                className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                              >
+                                {isSelectedBusy ? "Saving…" : "Save"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelEdit}
+                                disabled={isSelectedBusy}
+                                className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-600 dark:text-neutral-400">
+                            {isSelectedBusy ? "Regenerating…" : selectedSection.content}
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
-
-                  {isEditingSelected ? (
-                    <div className="mt-2 space-y-2">
-                      <label htmlFor={`${sectionEditId}-${selectedSection.key}`} className="sr-only">
-                        Edit {selectedSection.title}
-                      </label>
-                      <textarea
-                        id={`${sectionEditId}-${selectedSection.key}`}
-                        value={draftContent}
-                        onChange={(e) => setDraftContent(e.target.value)}
-                        rows={4}
-                        disabled={isSelectedBusy}
-                        className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => saveEdit(selectedSection.key)}
-                          disabled={isSelectedBusy || !draftContent.trim()}
-                          className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-                        >
-                          {isSelectedBusy ? "Saving…" : "Save"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={cancelEdit}
-                          disabled={isSelectedBusy}
-                          className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-600 dark:text-neutral-400">
-                      {isSelectedBusy ? "Regenerating…" : selectedSection.content}
-                    </p>
-                  )}
                 </div>
-              )}
+              </div>
             </div>
           </div>
 
