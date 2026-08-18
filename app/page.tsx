@@ -246,6 +246,49 @@ function getSectionIcon(key: string) {
   }
 }
 
+function getStackCategoryIcon(key: StackCategory) {
+  const common = { viewBox: "0 0 24 24", className: "h-3.5 w-3.5", "aria-hidden": true } as const;
+  switch (key) {
+    case "frontend":
+      return (
+        <svg {...common} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="4" width="18" height="14" rx="2" />
+          <line x1="3" y1="8" x2="21" y2="8" />
+        </svg>
+      );
+    case "backend":
+      return (
+        <svg {...common} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="4" width="18" height="6" rx="1.5" />
+          <rect x="3" y="14" width="18" height="6" rx="1.5" />
+          <line x1="7" y1="7" x2="7.01" y2="7" />
+          <line x1="7" y1="17" x2="7.01" y2="17" />
+        </svg>
+      );
+    case "database":
+      return (
+        <svg {...common} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <ellipse cx="12" cy="6" rx="8" ry="3" />
+          <path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6" />
+          <path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" />
+        </svg>
+      );
+    case "hosting":
+      return (
+        <svg {...common} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M7 18a4.5 4.5 0 0 1-1-8.9A5.5 5.5 0 0 1 16.5 9a4 4 0 0 1 .5 8H7Z" />
+        </svg>
+      );
+    case "auth":
+      return (
+        <svg {...common} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="5" y="11" width="14" height="9" rx="2" />
+          <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+        </svg>
+      );
+  }
+}
+
 const ABOUT_STEPS = [
   {
     title: "Start with an idea",
@@ -1406,23 +1449,31 @@ export default function Home() {
             )}
 
             {stack && (
-              <div className="mt-3 space-y-4">
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {STACK_CATEGORIES.map(({ key, label }) => {
                   const piece = stack[key];
                   const isOverriding = overridingCategory === key;
 
                   return (
-                    <div key={key}>
-                      <div className="flex items-center justify-between gap-2">
-                        <h3 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
-                          {label}
-                        </h3>
+                    <div
+                      key={key}
+                      className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] p-4"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900">
+                            {getStackCategoryIcon(key)}
+                          </span>
+                          <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                            {label}
+                          </h3>
+                        </div>
                         {!isOverriding && (
                           <button
                             type="button"
                             onClick={() => startOverride(key, piece.choice)}
                             disabled={stackLoading}
-                            className="text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:underline disabled:opacity-50"
+                            className="rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-white/10 disabled:opacity-50"
                           >
                             Override
                           </button>
@@ -1430,7 +1481,7 @@ export default function Home() {
                       </div>
 
                       {isOverriding ? (
-                        <div className="mt-1 space-y-2">
+                        <div className="mt-2 space-y-2">
                           <label htmlFor={`${stackOverrideId}-${key}`} className="sr-only">
                             Override {label}
                           </label>
@@ -1441,7 +1492,7 @@ export default function Home() {
                             value={overrideChoice}
                             onChange={(e) => setOverrideChoice(e.target.value)}
                             disabled={stackLoading}
-                            className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+                            className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
                           />
                           <datalist id={`${stackOverrideId}-${key}-options`}>
                             {STACK_ALTERNATIVES[key].map((alt) => (
@@ -1469,7 +1520,7 @@ export default function Home() {
                         </div>
                       ) : (
                         <>
-                          <p className="mt-1 text-sm font-medium">{piece.choice}</p>
+                          <p className="mt-2 text-sm font-medium">{piece.choice}</p>
                           <p className="mt-0.5 text-sm text-neutral-600 dark:text-neutral-400">{piece.rationale}</p>
                         </>
                       )}
