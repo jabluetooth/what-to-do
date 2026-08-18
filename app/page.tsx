@@ -1211,12 +1211,14 @@ export default function Home() {
             <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
               Product Requirements
             </p>
-            <div className="mt-3 flex w-full flex-col sm:flex-row overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03]">
+            <div
+              className={`mt-3 flex w-full flex-col sm:flex-row overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] transition-all duration-300 ease-in-out ${
+                selectedSection ? "sm:ml-0 sm:w-full" : "sm:ml-[calc((100%_-_14rem)/2)] sm:w-56"
+              }`}
+            >
               <div
-                className={`w-full sm:w-56 shrink-0 divide-y divide-neutral-200 dark:divide-neutral-800 transition-[margin-left] duration-300 ease-in-out ${
-                  selectedSection
-                    ? "sm:ml-0 border-b sm:border-b-0 sm:border-r border-neutral-200 dark:border-neutral-800"
-                    : "sm:ml-[calc((100%_-_14rem)/2)]"
+                className={`w-full sm:w-56 shrink-0 divide-y divide-neutral-200 dark:divide-neutral-800 ${
+                  selectedSection ? "border-b sm:border-b-0 sm:border-r border-neutral-200 dark:border-neutral-800" : ""
                 }`}
               >
                 {state.sections.map((section) => {
