@@ -1309,10 +1309,16 @@ export default function Home() {
                 })}
               </div>
 
+              {/* This panel mounts as soon as a title is clicked, while the box is still mid-width
+                  -transition (224px growing to full) — as a flex-1 sibling it would otherwise lay
+                  out and wrap its text at that shrunken width and visibly re-wrap every frame as
+                  the box grows, reading as a jittery flash. The animation delay + "backwards" fill
+                  mode keeps it at the fade-in's invisible "from" state (opacity 0) until the box's
+                  own transition has mostly finished, so that reflow happens off-screen. */}
               {selectedSection && (
                 <div
                   key={selectedSection.key}
-                  className="w-full flex-1 min-w-0 p-4 [animation:fade-in-up_0.2s_ease-out]"
+                  className="w-full flex-1 min-w-0 p-4 [animation:fade-in-up_0.2s_ease-out_0.2s_backwards]"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <h2 className="text-sm font-semibold">{selectedSection.title}</h2>
