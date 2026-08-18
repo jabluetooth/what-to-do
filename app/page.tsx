@@ -1742,9 +1742,22 @@ export default function Home() {
               <button
                 type="button"
                 onClick={requestStartOver}
-                className="text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:underline"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:underline"
               >
-                Start over →
+                Start over
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                  <polyline points="21 3 21 9 15 9" />
+                </svg>
               </button>
             </div>
           ) : (
