@@ -82,7 +82,7 @@ export async function generatePrd(input: GeneratePrdInput): Promise<GeneratePrdR
     fallbackModel: MODEL_FAST,
     maxTokens: 2000,
     tool: PRD_TOOL,
-    userContent: `Generate a concise, MVP-scoped PRD for a developer app idea. Write for a solo developer deciding what to build next, not a corporate audience. Keep each section to a few sentences or a short bullet list — this feeds a scaffolding pipeline, not a formal document.\n\n${contextLines.join("\n")}\n\nEmit exactly these sections, in this order: ${PRD_SECTION_DEFS.map((s) => `${s.key} (${s.title})`).join(", ")}.`,
+    userContent: `Generate a concise, MVP-scoped PRD for a developer app idea. Write for a solo developer deciding what to build next, not a corporate audience. Keep each section to a few sentences or a short bullet list — this feeds a scaffolding pipeline, not a formal document. Plain text only: no markdown (no #/## headers, no **bold**, no _italics_); for lists use a plain "- " prefix per line, nothing else.\n\n${contextLines.join("\n")}\n\nEmit exactly these sections, in this order: ${PRD_SECTION_DEFS.map((s) => `${s.key} (${s.title})`).join(", ")}.`,
     schema: PrdToolOutputSchema,
   });
 
@@ -137,7 +137,7 @@ export async function regeneratePrdSection(input: {
     fallbackModel: MODEL_FAST,
     maxTokens: 800,
     tool: PRD_SECTION_TOOL,
-    userContent: `App idea prompt: "${input.prompt}"\n\nRest of the current PRD (context for consistency — do not repeat it back):\n\n${otherSections}\n\nRewrite only the "${def.title}" section.${input.instructions ? ` Developer's guidance: ${input.instructions}` : ""}`,
+    userContent: `App idea prompt: "${input.prompt}"\n\nRest of the current PRD (context for consistency — do not repeat it back):\n\n${otherSections}\n\nRewrite only the "${def.title}" section. Plain text only: no markdown (no #/## headers, no **bold**, no _italics_); for lists use a plain "- " prefix per line, nothing else.${input.instructions ? ` Developer's guidance: ${input.instructions}` : ""}`,
     schema: PrdSectionOutputSchema,
   });
 

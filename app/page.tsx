@@ -334,6 +334,19 @@ export default function Home() {
   const [draftContent, setDraftContent] = useState("");
   const [sectionBusyKey, setSectionBusyKey] = useState<string | null>(null);
   const [sectionError, setSectionError] = useState<string | null>(null);
+  const [expandedSectionKeys, setExpandedSectionKeys] = useState<Set<string>>(new Set());
+
+  const toggleSection = (key: string) => {
+    setExpandedSectionKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
 
   const [stack, setStack] = useState<StackRecommendation | null>(null);
   const [stackStale, setStackStale] = useState(false);
@@ -574,6 +587,7 @@ export default function Home() {
 
       setState({ phase: "result", sections: data.sections, lowConfidence: data.lowConfidence });
       setShowManualForm(false);
+      setExpandedSectionKeys(new Set());
     } catch {
       setState({ phase: "error", message: "Network error — please try again." });
     }
@@ -613,6 +627,7 @@ export default function Home() {
       }
 
       setState({ phase: "result", sections: data.sections, lowConfidence: data.lowConfidence });
+      setExpandedSectionKeys(new Set());
     } catch {
       setState({ phase: "error", message: "Network error — please try again." });
     }
@@ -1194,84 +1209,106 @@ export default function Home() {
             <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
               Product Requirements
             </p>
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="mt-3 overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] divide-y divide-neutral-200 dark:divide-neutral-800">
               {state.sections.map((section) => {
                 const isEditing = editingKey === section.key;
                 const isBusy = sectionBusyKey === section.key;
                 const anyBusy = sectionBusyKey !== null;
+                const isExpanded = expandedSectionKeys.has(section.key);
 
                 return (
-                  <section
-                    key={section.key}
-                    className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] p-4"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900">
-                          {getSectionIcon(section.key)}
-                        </span>
-                        <h2 className="text-sm font-semibold">{section.title}</h2>
-                      </div>
-                      {!isEditing && (
-                        <div className="flex shrink-0 gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => startEdit(section)}
-                            disabled={anyBusy}
-                            className="rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-white/10 disabled:opacity-50"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => regenerateSection(section.key)}
-                            disabled={anyBusy}
-                            className="rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-white/10 disabled:opacity-50"
-                          >
-                            {isBusy ? "Regenerating…" : "Regenerate"}
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                  <div key={section.key}>
+                    <button
+                      type="button"
+                      onClick={() => toggleSection(section.key)}
+                      aria-expanded={isExpanded}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-neutral-100 dark:hover:bg-white/[0.04]"
+                    >
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900">
+                        {getSectionIcon(section.key)}
+                      </span>
+                      <span className="flex-1 text-sm font-semibold">{section.title}</span>
+                      <svg
+                        viewBox="0 0 24 24"
+                        className={`h-4 w-4 shrink-0 text-neutral-400 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden
+                      >
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </button>
 
-                    {isEditing ? (
-                      <div className="mt-2 space-y-2">
-                        <label htmlFor={`${sectionEditId}-${section.key}`} className="sr-only">
-                          Edit {section.title}
-                        </label>
-                        <textarea
-                          id={`${sectionEditId}-${section.key}`}
-                          value={draftContent}
-                          onChange={(e) => setDraftContent(e.target.value)}
-                          rows={4}
-                          disabled={isBusy}
-                          className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => saveEdit(section.key)}
-                            disabled={isBusy || !draftContent.trim()}
-                            className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-                          >
-                            {isBusy ? "Saving…" : "Save"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={cancelEdit}
-                            disabled={isBusy}
-                            className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-                          >
-                            Cancel
-                          </button>
+                    <div
+                      className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+                    >
+                      <div className="overflow-hidden">
+                        <div className="px-4 pb-4">
+                          {!isEditing && (
+                            <div className="mb-2 flex justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => startEdit(section)}
+                                disabled={anyBusy}
+                                className="rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-white/10 disabled:opacity-50"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => regenerateSection(section.key)}
+                                disabled={anyBusy}
+                                className="rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-white/10 disabled:opacity-50"
+                              >
+                                {isBusy ? "Regenerating…" : "Regenerate"}
+                              </button>
+                            </div>
+                          )}
+
+                          {isEditing ? (
+                            <div className="space-y-2">
+                              <label htmlFor={`${sectionEditId}-${section.key}`} className="sr-only">
+                                Edit {section.title}
+                              </label>
+                              <textarea
+                                id={`${sectionEditId}-${section.key}`}
+                                value={draftContent}
+                                onChange={(e) => setDraftContent(e.target.value)}
+                                rows={4}
+                                disabled={isBusy}
+                                className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => saveEdit(section.key)}
+                                  disabled={isBusy || !draftContent.trim()}
+                                  className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                                >
+                                  {isBusy ? "Saving…" : "Save"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={cancelEdit}
+                                  disabled={isBusy}
+                                  className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="whitespace-pre-wrap text-sm text-neutral-600 dark:text-neutral-400">
+                              {isBusy ? "Regenerating…" : section.content}
+                            </p>
+                          )}
                         </div>
                       </div>
-                    ) : (
-                      <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-600 dark:text-neutral-400">
-                        {isBusy ? "Regenerating…" : section.content}
-                      </p>
-                    )}
-                  </section>
+                    </div>
+                  </div>
                 );
               })}
             </div>

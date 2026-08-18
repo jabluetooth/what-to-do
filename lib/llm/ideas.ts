@@ -47,7 +47,7 @@ export async function generateRandomIdea(avoidTitles: string[]): Promise<RandomI
     // closing brace, which is exactly what forces Groq into the tool_use_failed text fallback.
     maxTokens: 400,
     tool: IDEA_TOOL,
-    userContent: `Suggest one random, concrete app idea for a developer (indie hacker / hackathon participant / student) who has no idea what to build. Scope it small enough for a weekend-to-MVP timeframe. Vary the domain — don't default to productivity/todo apps. ${avoidLine}`,
+    userContent: `Suggest one random, concrete app idea for a developer (indie hacker / hackathon participant / student) who has no idea what to build. Scope it small enough for a weekend-to-MVP timeframe. Vary the domain — don't default to productivity/todo apps. Plain text only, no markdown formatting. ${avoidLine}`,
     schema: RandomIdeaSchema,
   });
 }

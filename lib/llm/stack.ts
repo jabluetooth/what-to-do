@@ -67,7 +67,7 @@ export async function generateStackRationale(input: {
     fallbackModel: MODEL_FAST,
     maxTokens: 600,
     tool: STACK_RATIONALE_TOOL,
-    userContent: `${context}\n\nWrite a short, specific rationale (1-2 sentences) for each piece — reference something concrete about this app idea, not generic praise for the technology.`,
+    userContent: `${context}\n\nWrite a short, specific rationale (1-2 sentences) for each piece — reference something concrete about this app idea, not generic praise for the technology. Plain text only, no markdown formatting.`,
     schema: StackRationaleSchema,
   });
 }
