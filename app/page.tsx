@@ -289,6 +289,45 @@ function getStackCategoryIcon(key: StackCategory) {
   }
 }
 
+/**
+ * Decorative "WHAT TO DO?" background text — purely cosmetic, so it's not part of the a11y tree.
+ * Breaks out of its column to span the full viewport width (left-1/2 + -translate-x-1/2 +
+ * w-screen), clipped only vertically by its own overflow-hidden. The nearest positioned ancestor
+ * must NOT have overflow-hidden of its own, or it clips the breakout right back down to that
+ * ancestor's own (narrow) width — every call site is placed outside any such wrapper. Font-size
+ * scales with viewport width (clamp) so the text reaches from edge to edge at any screen size.
+ * Height is fixed (relative to that same font-size, via inheritance) with leading-none on the
+ * text — a transform-based crop doesn't work here: a transform repaints pixels without changing
+ * the box overflow-hidden measures against, and default line-height pads well beyond the glyphs,
+ * so nothing visible actually gets cut that way. A taller window (0.92em, cropping only the very
+ * base of the glyphs) than the mask's own fade zone means the fade has real room to play out
+ * gradually before it reaches that crop line, instead of both happening over the same short span
+ * and reading as one abrupt edge.
+ *
+ * `compact` shrinks the clamp for call sites with a smaller reserved gutter (the result screens,
+ * which are mostly full of real content) — without it, the full-size glyph is taller than that
+ * gutter and spills upward into whatever precedes it.
+ */
+function Watermark({ compact = false }: { compact?: boolean }) {
+  return (
+    <div
+      className="pointer-events-none absolute bottom-0 left-1/2 z-0 w-screen -translate-x-1/2 overflow-hidden"
+      style={{ height: "0.92em", fontSize: compact ? "clamp(2rem, 8vw, 9rem)" : "clamp(3rem, 14vw, 18rem)" }}
+    >
+      <p
+        aria-hidden="true"
+        className="select-none whitespace-nowrap text-center font-extrabold leading-none tracking-tighter text-neutral-900/[0.05] dark:text-white/[0.045] blur-[2px]"
+        style={{
+          maskImage: "linear-gradient(to bottom, black 0%, black 15%, transparent 95%)",
+          WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 15%, transparent 95%)",
+        }}
+      >
+        WHAT TO DO?
+      </p>
+    </div>
+  );
+}
+
 const ABOUT_STEPS = [
   {
     title: "Start with an idea",
@@ -1039,35 +1078,7 @@ export default function Home() {
       {(state.phase === "idle" || state.phase === "submitting" || state.phase === "error") && (
         <>
           <div className="relative mt-8 pb-40 text-center">
-            {/* Decorative watermark: purely cosmetic, so it's not part of the a11y tree. This
-                wrapper breaks out of the max-w-2xl column to span the full viewport width
-                (left-1/2 + -translate-x-1/2 + w-screen), clipped only vertically by its own
-                overflow-hidden — the outer hero div deliberately has none, or it would clip the
-                breakout right back down to its own narrow width. Font-size scales with viewport
-                width (clamp) so "WHAT TO DO?" reaches from edge to edge at any screen size.
-                Height is fixed (relative to that same font-size, via inheritance) with
-                leading-none on the text — a transform-based crop doesn't work here: a transform
-                repaints pixels without changing the box overflow-hidden measures against, and
-                default line-height pads well beyond the glyphs, so nothing visible actually gets
-                cut that way. A taller window (0.92em, cropping only the very base of the glyphs)
-                than the mask's own fade zone means the fade has real room to play out gradually
-                before it reaches that crop line, instead of both happening over the same short
-                span and reading as one abrupt edge. */}
-            <div
-              className="pointer-events-none absolute bottom-0 left-1/2 z-0 w-screen -translate-x-1/2 overflow-hidden"
-              style={{ height: "0.92em", fontSize: "clamp(3rem, 14vw, 18rem)" }}
-            >
-              <p
-                aria-hidden="true"
-                className="select-none whitespace-nowrap text-center font-extrabold leading-none tracking-tighter text-neutral-900/[0.05] dark:text-white/[0.045] blur-[2px]"
-                style={{
-                  maskImage: "linear-gradient(to bottom, black 0%, black 15%, transparent 95%)",
-                  WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 15%, transparent 95%)",
-                }}
-              >
-                WHAT TO DO?
-              </p>
-            </div>
+            <Watermark />
 
             <div className="relative z-10">
               <p className="text-base font-medium text-neutral-500 dark:text-neutral-400">
@@ -1247,6 +1258,14 @@ export default function Home() {
               {boilerplateJobActive && " (available once boilerplate generation finishes)"}
             </p>
           )}
+
+          {/* Same watermark as the hero, sized down for a page that's mostly full of content —
+              placed here, outside the slide switcher below, because that switcher needs its own
+              overflow-hidden to clip the inactive slide during the transform, and an
+              overflow-hidden ancestor would clip the watermark's own full-bleed breakout too. */}
+          <div className="relative pb-24">
+            <Watermark compact />
+          </div>
 
           <div className="relative overflow-hidden">
             <div
