@@ -432,6 +432,33 @@ export default function Home() {
   const isSelectedBusy = selectedSection ? sectionBusyKey === selectedSection.key : false;
   const anySectionBusy = sectionBusyKey !== null;
 
+  // The description panel used to mount the instant a title was selected, as a flex-1 sibling of
+  // the title list, while the enclosing box was still mid-width-transition (narrow, centered ->
+  // full width). Squeezed into that shrunken width, its text wrapped into many short lines,
+  // ballooning the panel's own height well past its final size — and since it was still a normal
+  // flex child (not just invisible — an opacity fade doesn't touch layout), that inflated height
+  // pushed the box, and everything below it (Continue/Start over), sharply down and back as the
+  // box grew and the panel's height settled. Deferring the panel's *mount* (not just its opacity)
+  // until the box's own transition has essentially finished means it only ever renders at, or
+  // very near, its true final width. Only the box's very first expansion needs the delay — the
+  // box is already full width for every later switch between sections, so those show instantly.
+  const boxExpandedRef = useRef(false);
+  const [showSelectedPanel, setShowSelectedPanel] = useState(false);
+  useEffect(() => {
+    if (!selectedSectionKey) {
+      boxExpandedRef.current = false;
+      const timer = setTimeout(() => setShowSelectedPanel(false), 0);
+      return () => clearTimeout(timer);
+    }
+    if (boxExpandedRef.current) {
+      const timer = setTimeout(() => setShowSelectedPanel(true), 0);
+      return () => clearTimeout(timer);
+    }
+    boxExpandedRef.current = true;
+    const timer = setTimeout(() => setShowSelectedPanel(true), 280);
+    return () => clearTimeout(timer);
+  }, [selectedSectionKey]);
+
   // Both slides stay permanently mounted (unlike the hero->result transition, which unmounts the
   // hero after it exits) — the user moves back and forth between PRD and Tech Stack freely, so
   // there's no one-way "done with this" moment to unmount on, and keeping both mounted means a
@@ -1328,16 +1355,13 @@ export default function Home() {
                 })}
               </div>
 
-              {/* This panel mounts as soon as a title is clicked, while the box is still mid-width
-                  -transition (224px growing to full) — as a flex-1 sibling it would otherwise lay
-                  out and wrap its text at that shrunken width and visibly re-wrap every frame as
-                  the box grows, reading as a jittery flash. The animation delay + "backwards" fill
-                  mode keeps it at the fade-in's invisible "from" state (opacity 0) until the box's
-                  own transition has mostly finished, so that reflow happens off-screen. */}
-              {selectedSection && (
+              {/* Mount is deferred until showSelectedPanel flips true (see the effect above) — by
+                  then the box's own width transition has essentially finished, so this never lays
+                  out, even briefly, at a squeezed width. */}
+              {selectedSection && showSelectedPanel && (
                 <div
                   key={selectedSection.key}
-                  className="w-full flex-1 min-w-0 p-4 [animation:fade-in-up_0.2s_ease-out_0.2s_backwards]"
+                  className="w-full flex-1 min-w-0 p-4 [animation:fade-in-up_0.2s_ease-out]"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <h2 className="text-sm font-semibold">{selectedSection.title}</h2>
