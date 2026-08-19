@@ -1212,7 +1212,6 @@ export default function Home() {
               )}
 
               <p className="mt-4 text-base" role="status" aria-live="polite">
-                {state.phase === "submitting" && "Generating your PRD, usually under 10 seconds…"}
                 {state.phase === "error" && <span className="text-red-600 dark:text-red-400">{state.message}</span>}
               </p>
             </div>
@@ -1285,19 +1284,80 @@ export default function Home() {
               </div>
             </div>
           ) : (
-            <p className="text-xs text-neutral-500">
-              Guest session — your work isn&apos;t saved.{" "}
-              <button
-                type="button"
-                onClick={handleSignUpClick}
-                disabled={boilerplateJobActive}
-                title={boilerplateJobActive ? "Wait for boilerplate generation to finish first" : undefined}
-                className="underline disabled:no-underline disabled:opacity-50"
-              >
-                Sign up to save
-              </button>
-              {boilerplateJobActive && " (available once boilerplate generation finishes)"}
-            </p>
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-xs text-neutral-500">
+                Guest session — your work isn&apos;t saved.{" "}
+                <button
+                  type="button"
+                  onClick={handleSignUpClick}
+                  disabled={boilerplateJobActive}
+                  title={boilerplateJobActive ? "Wait for boilerplate generation to finish first" : undefined}
+                  className="underline disabled:no-underline disabled:opacity-50"
+                >
+                  Sign up to save
+                </button>
+                {boilerplateJobActive && " (available once boilerplate generation finishes)"}
+              </p>
+              {!showExitConfirm && (
+                <button
+                  type="button"
+                  onClick={requestStartOver}
+                  className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:underline"
+                >
+                  Start over
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-3 w-3"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                    <polyline points="21 3 21 9 15 9" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
+
+          {showExitConfirm && (
+            <div className="rounded-md border border-neutral-300 dark:border-neutral-700 p-4 space-y-2">
+              <p className="text-sm font-medium">Sign up to save this project before starting over?</p>
+              {boilerplateJobActive && (
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  Boilerplate is still generating — sign-up isn&apos;t available until it finishes.
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleSignUpClick}
+                  disabled={boilerplateJobActive}
+                  className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                >
+                  Sign up to save
+                </button>
+                <button
+                  type="button"
+                  onClick={discardAndStartOver}
+                  disabled={exiting}
+                  className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                >
+                  {exiting ? "Discarding…" : "Discard & start over"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowExitConfirm(false)}
+                  disabled={exiting}
+                  className="text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:underline disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           )}
 
           <div className="relative overflow-hidden">
@@ -1756,66 +1816,6 @@ export default function Home() {
           <div className="relative pb-40">
             <Watermark />
           </div>
-
-          {!showExitConfirm ? (
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={requestStartOver}
-                className="inline-flex items-center gap-1.5 text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:underline"
-              >
-                Start over
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-3.5 w-3.5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-                  <polyline points="21 3 21 9 15 9" />
-                </svg>
-              </button>
-            </div>
-          ) : (
-            <div className="rounded-md border border-neutral-300 dark:border-neutral-700 p-4 space-y-2">
-              <p className="text-sm font-medium">Sign up to save this project before starting over?</p>
-              {boilerplateJobActive && (
-                <p className="text-xs text-amber-700 dark:text-amber-400">
-                  Boilerplate is still generating — sign-up isn&apos;t available until it finishes.
-                </p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={handleSignUpClick}
-                  disabled={boilerplateJobActive}
-                  className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-                >
-                  Sign up to save
-                </button>
-                <button
-                  type="button"
-                  onClick={discardAndStartOver}
-                  disabled={exiting}
-                  className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-                >
-                  {exiting ? "Discarding…" : "Discard & start over"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowExitConfirm(false)}
-                  disabled={exiting}
-                  className="text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:underline disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
