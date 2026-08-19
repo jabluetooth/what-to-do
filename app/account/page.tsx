@@ -48,6 +48,14 @@ export default async function AccountPage() {
   const connection = await getGithubConnectionStatus(userId);
   const autoPushToGithub = userRow?.autoPushToGithub ?? false;
   const lastPush = await getLatestGithubPushResult(userId);
+  // getGithubConnectionStatus's `usable` only catches a token that fails to *decrypt* (a rotated
+  // encryption key) — it can't catch a token that decrypts fine but GitHub itself has since
+  // rejected (revoked by the user on GitHub's side, or otherwise invalidated), which instead
+  // only ever shows up as a "failed (401)" in the last push's stored error. Both are the same
+  // user-facing situation — reconnect — so both get the same messaging below instead of the
+  // second case showing as "Connected" while every push silently keeps failing the same way.
+  const pushRejectedCredentials = !lastPush?.repoUrl && (lastPush?.error?.includes("failed (401)") ?? false);
+  const connectionNeedsReauth = connection ? !connection.usable || pushRejectedCredentials : false;
 
   // Explicit absolute assignments, not a toggle: negating a render-time snapshot meant a stale
   // page (two tabs open, a bfcache restore) could invert the *opposite* of what the user
@@ -94,20 +102,31 @@ export default async function AccountPage() {
 
       {connection ? (
         <div className="mt-4 space-y-3">
-          {connection.usable ? (
+          {!connectionNeedsReauth ? (
             <p className="text-sm">
               Connected as <strong>{connection.githubLogin}</strong> (repo access granted).
             </p>
           ) : (
             <p className="text-sm text-amber-700 dark:text-amber-400">
-              Your GitHub connection needs to be re-established (couldn&apos;t verify it&apos;s still valid) —
-              disconnect below, then reconnect.
+              Your GitHub connection needs to be re-established (
+              {!connection.usable
+                ? "couldn't verify it's still valid"
+                : "GitHub rejected the stored access, likely revoked on GitHub's side"}
+              ) — disconnect below, then reconnect.
             </p>
           )}
 
           <div className="flex flex-wrap gap-2">
             <form action={autoPushToGithub ? disableAutoPush : enableAutoPush}>
-              <button type="submit" disabled={!connection.usable} className={secondaryButtonClass}>
+              {/* Only blocks turning it *on* with a broken connection (pointless — it would just
+                  fail the same way) — always allow turning an already-on toggle back off, even
+                  when broken, so a user isn't stuck with no way to stop the repeated failures
+                  short of the separate Disconnect button. */}
+              <button
+                type="submit"
+                disabled={connectionNeedsReauth && !autoPushToGithub}
+                className={secondaryButtonClass}
+              >
                 {autoPushToGithub ? "Turn off auto-push" : "Turn on auto-push"}
               </button>
             </form>
