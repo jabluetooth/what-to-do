@@ -108,7 +108,16 @@ export default function PreviewPage() {
       }
 
       setState({ phase: "starting" });
-      const dev = await instance.spawn("npm", ["run", "dev"]);
+      // --webpack forces the fallback bundler instead of the default Turbopack, whose dev
+      // server is a native (non-WASM) binary — WebContainers can only execute JS/WASM, so
+      // Turbopack can't actually run here. Confirmed live: without this, "server-ready" still
+      // fires (the process starts and reports a listening port) and the fetch-readiness probe
+      // below correctly fails with a CORS error (expected — it's a cross-origin fetch, not a
+      // real problem), but the iframe itself never gets an actual response either — the dev
+      // server can't serve requests. Only affects the WebContainer preview's own invocation, not
+      // the template's package.json "dev" script, which still defaults to Turbopack for anyone
+      // who downloads the zip and runs it on a real machine.
+      const dev = await instance.spawn("npm", ["run", "dev", "--", "--webpack"]);
       void dev.exit;
 
       instance.on("server-ready", (_port, url) => {
