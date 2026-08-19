@@ -108,13 +108,16 @@ export default function PreviewPage() {
       }
 
       setState({ phase: "starting" });
-      // The template is pinned to Next.js 15.x (see templates/nextjs-postgres-drizzle/package.json),
-      // where webpack is already the default dev bundler — Turbopack there is opt-in via
-      // --turbopack, the reverse of 16.x where it's the default and needs --webpack to opt out.
-      // Passing --webpack here against 15.x hung the dev server entirely (confirmed live: stuck
-      // at "Starting dev server..." indefinitely, no server-ready event, no errors) — almost
-      // certainly an unrecognized flag. Plain `npm run dev` is correct for the pinned version.
-      const dev = await instance.spawn("npm", ["run", "dev"]);
+      // --webpack forces the fallback bundler instead of the default Turbopack, whose dev
+      // server is a native (non-WASM) binary — WebContainers can only execute JS/WASM, so
+      // Turbopack can't actually run here. Confirmed live: without this, "server-ready" still
+      // fires (the process starts and reports a listening port) and the fetch-readiness probe
+      // below correctly fails with a CORS error (expected — it's a cross-origin fetch, not a
+      // real problem), but the iframe itself never gets an actual response either — the dev
+      // server can't serve requests. Only affects the WebContainer preview's own invocation, not
+      // the template's package.json "dev" script, which still defaults to Turbopack for anyone
+      // who downloads the zip and runs it on a real machine.
+      const dev = await instance.spawn("npm", ["run", "dev", "--", "--webpack"]);
       void dev.exit;
 
       instance.on("server-ready", (_port, url) => {
