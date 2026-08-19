@@ -135,6 +135,61 @@ function getStackCategoryIcon(key: StackCategory) {
   }
 }
 
+/** FAQ-style accordion for the modal's compressed PRD view — each section's title toggles its
+ *  full content. Owns its expand/collapse state internally rather than lifting it to
+ *  HistoryPage, so the parent can just remount this (via a `key={projectId}`) to reset it when a
+ *  different project's modal opens, instead of syncing it with an effect. */
+function PrdSectionsAccordion({ sections }: { sections: PrdSection[] }) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  function toggle(key: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  return (
+    <div className="divide-y divide-neutral-200 dark:divide-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-800">
+      {sections.map((section) => {
+        const isOpen = expanded.has(section.key);
+        return (
+          <div key={section.key}>
+            <button
+              type="button"
+              onClick={() => toggle(section.key)}
+              aria-expanded={isOpen}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-neutral-50 dark:hover:bg-white/5"
+            >
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900">
+                {getSectionIcon(section.key)}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">{section.title}</span>
+              <svg
+                viewBox="0 0 24 24"
+                className={`h-4 w-4 shrink-0 text-neutral-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            {isOpen && (
+              <p className="whitespace-pre-wrap px-3 pb-3 pl-10 text-sm text-neutral-600 dark:text-neutral-400">
+                {section.content}
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function HistoryPage() {
   const [state, setState] = useState<LoadState>("loading");
   const [query, setQuery] = useState("");
@@ -191,14 +246,7 @@ export default function HistoryPage() {
     <>
       <SiteNav />
       <main className="mx-auto w-full max-w-2xl px-6 pt-20 pb-16">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <Link href="/" className="text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:underline">
-              ← Back
-            </Link>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight">History</h1>
-          </div>
-        </div>
+        <h1 className="text-2xl font-semibold tracking-tight">History</h1>
 
         {state === "loading" && <p className="mt-8 text-sm text-neutral-500 dark:text-neutral-400">Loading…</p>}
 
@@ -354,19 +402,9 @@ export default function HistoryPage() {
                 <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
                   Product Requirements
                 </p>
-                <ul className="mt-2 space-y-1.5">
-                  {selected.sections.map((section) => (
-                    <li key={section.key} className="flex items-start gap-2">
-                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900">
-                        {getSectionIcon(section.key)}
-                      </span>
-                      <p className="min-w-0 text-sm">
-                        <span className="font-medium">{section.title}:</span>{" "}
-                        <span className="text-neutral-600 dark:text-neutral-400 line-clamp-1">{section.content}</span>
-                      </p>
-                    </li>
-                  ))}
-                </ul>
+                <div className="mt-2">
+                  <PrdSectionsAccordion key={selected.projectId} sections={selected.sections} />
+                </div>
               </div>
             )}
 
