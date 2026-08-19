@@ -17,6 +17,10 @@ export interface HistoryProject {
   lowConfidence: boolean;
   stack: StackRecommendation | null;
   hasBoilerplate: boolean;
+  /** False whenever hasBoilerplate is false too — WebContainers can't run every generated stack
+   *  (see lib/pipeline template metadata), so this is what the history UI uses to decide between
+   *  showing a working Preview button and a "not available" fallback. */
+  webContainerCompatible: boolean;
   /** Only present when the original prompt's optional hints included one — most historical
    *  entries won't have this, since it's opt-in on the intake form. */
   platform: PlatformHint | null;
@@ -63,7 +67,7 @@ export async function GET() {
       .where(inArray(stackVersions.projectId, projectIds))
       .orderBy(desc(stackVersions.createdAt)),
     db
-      .select({ projectId: boilerplateVersions.projectId })
+      .select({ projectId: boilerplateVersions.projectId, webContainerCompatible: boilerplateVersions.webContainerCompatible })
       .from(boilerplateVersions)
       .where(inArray(boilerplateVersions.projectId, projectIds))
       .orderBy(desc(boilerplateVersions.createdAt)),
@@ -74,7 +78,8 @@ export async function GET() {
   for (const row of prdRows) if (!latestPrd.has(row.projectId)) latestPrd.set(row.projectId, row);
   const latestStack = new Map<string, StackRecommendation>();
   for (const row of stackRows) if (!latestStack.has(row.projectId)) latestStack.set(row.projectId, row.stack);
-  const hasBoilerplate = new Set(boilerplateRows.map((row) => row.projectId));
+  const latestBoilerplate = new Map<string, boolean>();
+  for (const row of boilerplateRows) if (!latestBoilerplate.has(row.projectId)) latestBoilerplate.set(row.projectId, row.webContainerCompatible);
 
   const result: HistoryProject[] = userProjects.map((p) => ({
     projectId: p.id,
@@ -83,7 +88,8 @@ export async function GET() {
     sections: latestPrd.get(p.id)?.sections ?? [],
     lowConfidence: latestPrd.get(p.id)?.lowConfidence ?? false,
     stack: latestStack.get(p.id) ?? null,
-    hasBoilerplate: hasBoilerplate.has(p.id),
+    hasBoilerplate: latestBoilerplate.has(p.id),
+    webContainerCompatible: latestBoilerplate.get(p.id) ?? false,
     platform: p.hints?.platform ?? null,
   }));
 

@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { auth, signIn, signOut } from "@/lib/auth";
+import SiteNav from "@/components/SiteNav";
 import { getDb } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -27,20 +28,23 @@ export default async function AccountPage() {
 
   if (!session?.user?.id) {
     return (
-      <main className="max-w-lg mx-auto mt-16 px-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
-        <form
-          className="mt-6"
-          action={async () => {
-            "use server";
-            await signIn("github", { redirectTo: "/account" });
-          }}
-        >
-          <button type="submit" className={buttonClass}>
-            Sign in with GitHub
-          </button>
-        </form>
-      </main>
+      <>
+        <SiteNav />
+        <main className="max-w-lg mx-auto px-6 pt-20">
+          <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
+          <form
+            className="mt-6"
+            action={async () => {
+              "use server";
+              await signIn("github", { redirectTo: "/account" });
+            }}
+          >
+            <button type="submit" className={buttonClass}>
+              Sign in with GitHub
+            </button>
+          </form>
+        </main>
+      </>
     );
   }
 
@@ -72,7 +76,9 @@ export default async function AccountPage() {
   }
 
   return (
-    <main className="max-w-lg mx-auto mt-16 px-6 pb-16">
+    <>
+      <SiteNav />
+      <main className="max-w-lg mx-auto px-6 pt-20 pb-16">
       <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
       <p className="mt-2 text-sm">
         Signed in as <strong>{session.user.email ?? session.user.name}</strong>
@@ -185,6 +191,7 @@ export default async function AccountPage() {
           )}
         </div>
       )}
-    </main>
+      </main>
+    </>
   );
 }

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import type { PlatformHint, PrdSection, StackCategory, StackRecommendation } from "@/lib/types";
+import SiteNav from "@/components/SiteNav";
 
 /** Mirrors GET /api/account/history's `projects` array entries. */
 interface HistoryProject {
@@ -14,6 +15,7 @@ interface HistoryProject {
   lowConfidence: boolean;
   stack: StackRecommendation | null;
   hasBoilerplate: boolean;
+  webContainerCompatible: boolean;
   platform: PlatformHint | null;
 }
 
@@ -37,7 +39,7 @@ const STACK_CATEGORIES: { key: StackCategory; label: string }[] = [
  *  self-contained functions with no other dependencies, so the risk of editing it to extract them
  *  outweighs the cost of ~80 duplicated lines. */
 function getSectionIcon(key: string) {
-  const common = { viewBox: "0 0 24 24", className: "h-3.5 w-3.5", "aria-hidden": true } as const;
+  const common = { viewBox: "0 0 24 24", className: "h-3 w-3", "aria-hidden": true } as const;
   switch (key) {
     case "problem_statement":
       return (
@@ -91,7 +93,7 @@ function getSectionIcon(key: string) {
 }
 
 function getStackCategoryIcon(key: StackCategory) {
-  const common = { viewBox: "0 0 24 24", className: "h-3.5 w-3.5", "aria-hidden": true } as const;
+  const common = { viewBox: "0 0 24 24", className: "h-3 w-3", "aria-hidden": true } as const;
   switch (key) {
     case "frontend":
       return (
@@ -159,6 +161,15 @@ export default function HistoryPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!selected) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setSelected(null);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selected]);
+
   const projects = typeof state === "object" ? state.projects : EMPTY_PROJECTS;
 
   // Search matches topic/name (the prompt — there's no separate "name" field, the idea's
@@ -177,183 +188,216 @@ export default function HistoryPage() {
   }, [projects, query, platformFilter]);
 
   return (
-    <main className="mx-auto w-full max-w-2xl px-6 pt-12 pb-16">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <Link href="/" className="text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:underline">
-            ← Back
-          </Link>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight">History</h1>
+    <>
+      <SiteNav />
+      <main className="mx-auto w-full max-w-2xl px-6 pt-20 pb-16">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <Link href="/" className="text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:underline">
+              ← Back
+            </Link>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight">History</h1>
+          </div>
         </div>
-      </div>
 
-      {state === "loading" && <p className="mt-8 text-sm text-neutral-500 dark:text-neutral-400">Loading…</p>}
+        {state === "loading" && <p className="mt-8 text-sm text-neutral-500 dark:text-neutral-400">Loading…</p>}
 
-      {state === "error" && (
-        <p className="mt-8 text-sm text-red-600 dark:text-red-400">Couldn&apos;t load your history right now.</p>
-      )}
+        {state === "error" && (
+          <p className="mt-8 text-sm text-red-600 dark:text-red-400">Couldn&apos;t load your history right now.</p>
+        )}
 
-      {state === "signed-out" && (
-        <div className="mt-8">
-          <p className="text-sm text-neutral-600 dark:text-neutral-400">Sign in to see your saved projects.</p>
-          <button
-            type="button"
-            onClick={() => signIn("github", { redirectTo: "/history" })}
-            className="mt-4 rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium"
+        {state === "signed-out" && (
+          <div className="mt-8">
+            <p className="text-sm text-neutral-600 dark:text-neutral-400">Sign in to see your saved projects.</p>
+            <button
+              type="button"
+              onClick={() => signIn("github", { redirectTo: "/history" })}
+              className="mt-4 rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium"
+            >
+              Sign in with GitHub
+            </button>
+          </div>
+        )}
+
+        {typeof state === "object" && (
+          <div className="mt-8">
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <label htmlFor="history-search" className="sr-only">
+                Search by topic, tech stack, or name
+              </label>
+              <input
+                id="history-search"
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search by topic, tech stack, or name"
+                className="flex-1 rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+              />
+              <label htmlFor="history-platform" className="sr-only">
+                Filter by platform
+              </label>
+              <select
+                id="history-platform"
+                value={platformFilter}
+                onChange={(e) => setPlatformFilter(e.target.value as "all" | PlatformHint)}
+                className="rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm sm:w-40"
+              >
+                <option value="all">All platforms</option>
+                <option value="web">Web</option>
+                <option value="mobile">Mobile</option>
+              </select>
+            </div>
+
+            {projects.length === 0 ? (
+              <p className="mt-6 text-sm text-neutral-500 dark:text-neutral-400">
+                No saved projects yet — sign up from a guest session to keep one here.
+              </p>
+            ) : filtered.length === 0 ? (
+              <p className="mt-6 text-sm text-neutral-500 dark:text-neutral-400">No projects match that search.</p>
+            ) : (
+              <ul className="mt-6 divide-y divide-neutral-200 dark:divide-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-800">
+                {filtered.map((project) => (
+                  <li key={project.projectId}>
+                    <button
+                      type="button"
+                      onClick={() => setSelected(project)}
+                      className="block w-full px-4 py-3 text-left hover:bg-neutral-50 dark:hover:bg-white/5"
+                    >
+                      <p className="truncate text-sm font-medium">{project.prompt}</p>
+                      <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+                        {new Date(project.createdAt).toLocaleDateString(undefined, {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        })}
+                        {project.platform && ` · ${project.platform === "web" ? "Web" : "Mobile"}`}
+                        {project.stack && ` · ${project.stack.frontend.choice}`}
+                        {project.hasBoilerplate && " · Boilerplate"}
+                      </p>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </main>
+
+      {selected && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelected(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="history-detail-title"
+            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl"
           >
-            Sign in with GitHub
-          </button>
-        </div>
-      )}
-
-      {typeof state === "object" && (
-        <>
-          {selected ? (
-            <div className="mt-8 space-y-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <h2 id="history-detail-title" className="text-sm font-semibold leading-snug">
+                  {selected.prompt}
+                </h2>
+                <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                  {new Date(selected.createdAt).toLocaleDateString(undefined, {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  })}
+                  {selected.platform && ` · ${selected.platform === "web" ? "Web" : "Mobile"}`}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setSelected(null)}
-                className="text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:underline"
+                aria-label="Close"
+                className="shrink-0 rounded-full p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-white/10 dark:hover:text-white"
               >
-                ← Back to list
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
+                </svg>
               </button>
-
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
-                  Idea
-                </p>
-                <p className="mt-2 text-sm text-neutral-700 dark:text-neutral-300">{selected.prompt}</p>
-              </div>
-
-              {selected.sections.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
-                    Product Requirements
-                  </p>
-                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {selected.sections.map((section) => (
-                      <div
-                        key={section.key}
-                        className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] p-4"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900">
-                            {getSectionIcon(section.key)}
-                          </span>
-                          <h2 className="text-sm font-semibold">{section.title}</h2>
-                        </div>
-                        <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-600 dark:text-neutral-400">
-                          {section.content}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {selected.stack && (
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
-                    Tech Stack
-                  </p>
-                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {STACK_CATEGORIES.map(({ key, label }) => (
-                      <div
-                        key={key}
-                        className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] p-4"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900">
-                            {getStackCategoryIcon(key)}
-                          </span>
-                          <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                            {label}
-                          </h3>
-                        </div>
-                        <p className="mt-2 text-sm font-medium">{selected.stack![key].choice}</p>
-                        <p className="mt-0.5 text-sm text-neutral-600 dark:text-neutral-400">
-                          {selected.stack![key].rationale}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {selected.hasBoilerplate && (
-                <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                  A generated boilerplate was saved with this project too.
-                </p>
-              )}
-
-              <p className="text-xs text-neutral-500">
-                This is a read-only summary — full editing of a saved project is coming soon.
-              </p>
             </div>
-          ) : (
-            <div className="mt-8">
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <label htmlFor="history-search" className="sr-only">
-                  Search by topic, tech stack, or name
-                </label>
-                <input
-                  id="history-search"
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search by topic, tech stack, or name"
-                  className="flex-1 rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
-                />
-                <label htmlFor="history-platform" className="sr-only">
-                  Filter by platform
-                </label>
-                <select
-                  id="history-platform"
-                  value={platformFilter}
-                  onChange={(e) => setPlatformFilter(e.target.value as "all" | PlatformHint)}
-                  className="rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm sm:w-40"
-                >
-                  <option value="all">All platforms</option>
-                  <option value="web">Web</option>
-                  <option value="mobile">Mobile</option>
-                </select>
-              </div>
 
-              {projects.length === 0 ? (
-                <p className="mt-6 text-sm text-neutral-500 dark:text-neutral-400">
-                  No saved projects yet — sign up from a guest session to keep one here.
-                </p>
-              ) : filtered.length === 0 ? (
-                <p className="mt-6 text-sm text-neutral-500 dark:text-neutral-400">No projects match that search.</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {selected.hasBoilerplate && selected.webContainerCompatible ? (
+                <Link
+                  href={`/preview/project/${selected.projectId}`}
+                  className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3.5 py-2 text-sm font-medium"
+                >
+                  Preview
+                </Link>
               ) : (
-                <ul className="mt-6 divide-y divide-neutral-200 dark:divide-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-800">
-                  {filtered.map((project) => (
-                    <li key={project.projectId}>
-                      <button
-                        type="button"
-                        onClick={() => setSelected(project)}
-                        className="block w-full px-4 py-3 text-left hover:bg-neutral-50 dark:hover:bg-white/5"
-                      >
-                        <p className="truncate text-sm font-medium">{project.prompt}</p>
-                        <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
-                          {new Date(project.createdAt).toLocaleDateString(undefined, {
-                            year: "numeric",
-                            month: "short",
-                            day: "numeric",
-                          })}
-                          {project.platform && ` · ${project.platform === "web" ? "Web" : "Mobile"}`}
-                          {project.stack && ` · ${project.stack.frontend.choice}`}
-                          {project.hasBoilerplate && " · Boilerplate"}
-                        </p>
-                      </button>
+                <span className="inline-flex items-center rounded-md border border-neutral-200 dark:border-neutral-800 px-3.5 py-2 text-sm text-neutral-400 dark:text-neutral-600">
+                  Not available for preview
+                </span>
+              )}
+              {selected.hasBoilerplate ? (
+                <a
+                  href={`/api/account/history/${selected.projectId}/download`}
+                  className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3.5 py-2 text-sm font-medium"
+                >
+                  Download
+                </a>
+              ) : (
+                <span className="inline-flex items-center rounded-md border border-neutral-200 dark:border-neutral-800 px-3.5 py-2 text-sm text-neutral-400 dark:text-neutral-600">
+                  No boilerplate to download
+                </span>
+              )}
+            </div>
+
+            {selected.sections.length > 0 && (
+              <div className="mt-5">
+                <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
+                  Product Requirements
+                </p>
+                <ul className="mt-2 space-y-1.5">
+                  {selected.sections.map((section) => (
+                    <li key={section.key} className="flex items-start gap-2">
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900">
+                        {getSectionIcon(section.key)}
+                      </span>
+                      <p className="min-w-0 text-sm">
+                        <span className="font-medium">{section.title}:</span>{" "}
+                        <span className="text-neutral-600 dark:text-neutral-400 line-clamp-1">{section.content}</span>
+                      </p>
                     </li>
                   ))}
                 </ul>
-              )}
-            </div>
-          )}
-        </>
+              </div>
+            )}
+
+            {selected.stack && (
+              <div className="mt-5">
+                <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
+                  Tech Stack
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {STACK_CATEGORIES.map(({ key, label }) => (
+                    <span
+                      key={key}
+                      title={`${label}: ${selected.stack![key].choice}`}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] px-2.5 py-1 text-xs"
+                    >
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900">
+                        {getStackCategoryIcon(key)}
+                      </span>
+                      {selected.stack![key].choice}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <p className="mt-5 text-xs text-neutral-500">
+              Read-only summary — full editing of a saved project is coming soon.
+            </p>
+          </div>
+        </div>
       )}
-    </main>
+    </>
   );
 }

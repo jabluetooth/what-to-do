@@ -3,9 +3,10 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { signIn, signOut } from "next-auth/react";
+import { signIn } from "next-auth/react";
 import type { PlatformHint, PrdSection, RandomIdea, ScopeSizeHint, StackCategory, StackRecommendation } from "@/lib/types";
 import { STACK_ALTERNATIVES } from "@/lib/pipeline/stackMatrix";
+import SiteNav from "@/components/SiteNav";
 
 const SESSION_POLL_INTERVAL_MS = 30_000;
 const TIMEOUT_WARNING_THRESHOLD_SECONDS = 5 * 60;
@@ -187,16 +188,6 @@ type FlowState =
       hasBoilerplate: boolean;
     }
   | { phase: "error"; message: string };
-
-/** Mirrors GET /api/account/status. */
-interface AccountStatus {
-  email: string | null;
-  name: string | null;
-  autoPushToGithub: boolean;
-  connection: { githubLogin: string; scope: string; usable: boolean } | null;
-  connectionNeedsReauth: boolean;
-  lastPush: { repoUrl: string | null; error: string | null; createdAt: string } | null;
-}
 
 /** One small badge icon per PRD section key (lib/llm/prd.ts's PRD_SECTION_DEFS) — purely
     decorative next to each card's title, so always aria-hidden; the visible title text already
@@ -416,15 +407,7 @@ export default function Home() {
   // Same idea, title-only — also bumped once on mount so the headline (and only the headline)
   // plays its scramble-in as soon as the page loads, not just when a fresh idea lands.
   const [titlePlay, setTitlePlay] = useState(0);
-  const [isSignedIn, setIsSignedIn] = useState(false);
   const [showSignInModal, setShowSignInModal] = useState(false);
-
-  // Account modal: a client-fetch mirror of app/account/page.tsx (which stays as-is for direct
-  // links/bookmarks) so opening it doesn't cost a full navigation away from whatever's on screen.
-  const [showAccountModal, setShowAccountModal] = useState(false);
-  const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null);
-  const [accountLoading, setAccountLoading] = useState(false);
-  const [accountActionBusy, setAccountActionBusy] = useState(false);
 
   // Slideshow transition (hero/clarifying -> result/converted), forward-only: once a PRD exists
   // there's no in-app path back to the hero except "Start over," which resets everything and
@@ -602,7 +585,6 @@ export default function Home() {
         const sessionRes = await fetch("/api/auth/session");
         const sessionData = await sessionRes.json();
         const signedIn = Boolean(sessionData?.user);
-        if (!cancelled) setIsSignedIn(signedIn);
         if (cancelled || !signedIn) return;
 
         const convertRes = await fetch("/api/account/convert", { method: "POST" });
@@ -655,15 +637,6 @@ export default function Home() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showSignInModal]);
-
-  useEffect(() => {
-    if (!showAccountModal) return;
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setShowAccountModal(false);
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showAccountModal]);
 
   useEffect(() => {
     if (!showManualForm) return;
@@ -838,50 +811,6 @@ export default function Home() {
     if (boilerplateJobActive) return;
     signingInRef.current = true;
     signIn("github", { redirectTo: "/" });
-  }
-
-  async function openAccountModal() {
-    setShowAccountModal(true);
-    setAccountLoading(true);
-    try {
-      const res = await fetch("/api/account/status");
-      const data = await res.json();
-      if (res.ok) setAccountStatus(data);
-    } finally {
-      setAccountLoading(false);
-    }
-  }
-
-  async function toggleAutoPush(enabled: boolean) {
-    setAccountActionBusy(true);
-    try {
-      const res = await fetch("/api/account/github/autopush", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
-      });
-      if (res.ok) setAccountStatus((prev) => (prev ? { ...prev, autoPushToGithub: enabled } : prev));
-    } finally {
-      setAccountActionBusy(false);
-    }
-  }
-
-  async function disconnectGithubAccount() {
-    setAccountActionBusy(true);
-    try {
-      const res = await fetch("/api/account/github/disconnect", { method: "POST" });
-      if (res.ok) {
-        setAccountStatus((prev) =>
-          prev ? { ...prev, connection: null, connectionNeedsReauth: false, autoPushToGithub: false } : prev
-        );
-      }
-    } finally {
-      setAccountActionBusy(false);
-    }
-  }
-
-  function connectGithubForRepoAccess() {
-    signIn("github", { redirectTo: "/" }, { scope: "read:user user:email repo" });
   }
 
   async function keepWorking() {
@@ -1122,63 +1051,7 @@ export default function Home() {
 
   return (
     <>
-      <nav
-        aria-label="Main"
-        className="fixed top-0 left-0 right-0 z-50 flex justify-center pb-6 pt-[calc(1.5rem+env(safe-area-inset-top))] pointer-events-none"
-      >
-        <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-neutral-200 dark:border-white/10 bg-white/80 dark:bg-neutral-900/70 backdrop-blur-xl shadow-lg p-1.5">
-          <Link
-            href="/"
-            className="rounded-full px-4 py-2 hover:bg-neutral-100 dark:hover:bg-white/10"
-          >
-            {/* Logo.png is a black mark on a transparent background — dark:invert flips it to
-                white for this app's forced-dark theme (see globals.css) while still degrading
-                correctly if that forcing were ever relaxed back to following the OS preference. */}
-            <Image src="/Logo.png" alt="What To Do?" width={96} height={54} className="h-5 w-auto dark:invert" priority />
-          </Link>
-          <div className="hidden sm:block h-4 w-px bg-neutral-200 dark:bg-white/10 mx-1" />
-          <div className="hidden sm:flex items-center gap-1">
-            <a
-              href="#about"
-              className="rounded-full px-3.5 py-2 text-sm font-medium text-neutral-500 dark:text-neutral-400 transition-colors hover:bg-neutral-100 dark:hover:bg-white/10 hover:text-neutral-900 dark:hover:text-white"
-            >
-              About
-            </a>
-            <a
-              href="#faq"
-              className="rounded-full px-3.5 py-2 text-sm font-medium text-neutral-500 dark:text-neutral-400 transition-colors hover:bg-neutral-100 dark:hover:bg-white/10 hover:text-neutral-900 dark:hover:text-white"
-            >
-              FAQ
-            </a>
-          </div>
-          <div className="h-4 w-px bg-neutral-200 dark:bg-white/10 mx-1" />
-          {isSignedIn ? (
-            <>
-              <Link
-                href="/history"
-                className="rounded-full px-3.5 py-2 text-sm font-medium text-neutral-500 dark:text-neutral-400 transition-colors hover:bg-neutral-100 dark:hover:bg-white/10 hover:text-neutral-900 dark:hover:text-white"
-              >
-                History
-              </Link>
-              <button
-                type="button"
-                onClick={openAccountModal}
-                className="rounded-full bg-neutral-900 dark:bg-white px-4 py-2 text-sm font-bold text-white dark:text-neutral-900 transition-colors hover:bg-neutral-700 dark:hover:bg-neutral-200"
-              >
-                Account
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowSignInModal(true)}
-              className="rounded-full bg-neutral-900 dark:bg-white px-4 py-2 text-sm font-bold text-white dark:text-neutral-900 transition-colors hover:bg-neutral-700 dark:hover:bg-neutral-200"
-            >
-              Sign in
-            </button>
-          )}
-        </div>
-      </nav>
+      <SiteNav onSignInClick={() => setShowSignInModal(true)} />
 
       <main className="flex-1 mx-auto w-full max-w-2xl px-6 pt-20 pb-16">
       <div className="relative">
@@ -2093,146 +1966,6 @@ export default function Home() {
               <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
                 Wait for the current boilerplate job to finish before signing in.
               </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {showAccountModal && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowAccountModal(false);
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="account-modal-title"
-            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <h2 id="account-modal-title" className="text-lg font-semibold">
-                Account
-              </h2>
-              <button
-                type="button"
-                onClick={() => setShowAccountModal(false)}
-                aria-label="Close"
-                className="rounded-full p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-white/10 dark:hover:text-white"
-              >
-                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
-                </svg>
-              </button>
-            </div>
-
-            {accountLoading && !accountStatus ? (
-              <p className="mt-4 text-sm text-neutral-500 dark:text-neutral-400">Loading…</p>
-            ) : accountStatus ? (
-              <div className="mt-4 space-y-6">
-                <div>
-                  <p className="text-sm">
-                    Signed in as <strong>{accountStatus.email ?? accountStatus.name}</strong>
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => signOut({ redirectTo: "/" })}
-                    className="mt-3 rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium"
-                  >
-                    Sign out
-                  </button>
-                </div>
-
-                <div className="border-t border-neutral-200 dark:border-neutral-800 pt-6">
-                  <h3 className="text-sm font-semibold">GitHub repo push</h3>
-                  <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
-                    When enabled, a new GitHub repo is created automatically from your boilerplate the next time
-                    you sign up from a guest session.
-                  </p>
-
-                  {accountStatus.connection ? (
-                    <div className="mt-4 space-y-3">
-                      {!accountStatus.connectionNeedsReauth ? (
-                        <p className="text-sm">
-                          Connected as <strong>{accountStatus.connection.githubLogin}</strong> (repo access
-                          granted).
-                        </p>
-                      ) : (
-                        <p className="text-sm text-amber-700 dark:text-amber-400">
-                          Your GitHub connection needs to be re-established (
-                          {!accountStatus.connection.usable
-                            ? "couldn't verify it's still valid"
-                            : "GitHub rejected the stored access, likely revoked on GitHub's side"}
-                          ) — disconnect below, then reconnect.
-                        </p>
-                      )}
-
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => toggleAutoPush(!accountStatus.autoPushToGithub)}
-                          disabled={accountActionBusy || (accountStatus.connectionNeedsReauth && !accountStatus.autoPushToGithub)}
-                          className="rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium disabled:opacity-50"
-                        >
-                          {accountStatus.autoPushToGithub ? "Turn off auto-push" : "Turn on auto-push"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={disconnectGithubAccount}
-                          disabled={accountActionBusy}
-                          className="rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium disabled:opacity-50"
-                        >
-                          Disconnect GitHub
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={connectGithubForRepoAccess}
-                      className="mt-4 rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium"
-                    >
-                      Connect GitHub for repo access
-                    </button>
-                  )}
-
-                  {accountStatus.lastPush && (
-                    <div className="mt-4 rounded-md border border-neutral-200 dark:border-neutral-800 p-3 text-sm">
-                      <p className="font-medium">Last push</p>
-                      {accountStatus.lastPush.repoUrl ? (
-                        <p className="mt-1">
-                          <a
-                            href={accountStatus.lastPush.repoUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline"
-                          >
-                            {accountStatus.lastPush.repoUrl}
-                          </a>
-                        </p>
-                      ) : (
-                        <>
-                          <p className="mt-1 text-red-600 dark:text-red-400">Failed: {accountStatus.lastPush.error}</p>
-                          {/* connectionNeedsReauth is already timestamp-guarded server-side (see
-                              lib/github/connection.ts) — if this error text looks like a bad-
-                              credentials failure but the connection ISN'T flagged as needing
-                              reauth, the only way that combination happens is a stale record from
-                              before the most recent reconnect. */}
-                          {!accountStatus.connectionNeedsReauth && accountStatus.lastPush.error?.includes("failed (401)") && (
-                            <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-                              Recorded before your most recent reconnect, so this doesn&apos;t reflect your current
-                              connection — it&apos;ll update the next time an auto-push runs.
-                            </p>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <p className="mt-4 text-sm text-red-600 dark:text-red-400">Couldn&apos;t load account details.</p>
             )}
           </div>
         </div>
