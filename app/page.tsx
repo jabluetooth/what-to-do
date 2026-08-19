@@ -1619,14 +1619,15 @@ export default function Home() {
 
             {stack && (
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {STACK_CATEGORIES.map(({ key, label }) => {
+                {STACK_CATEGORIES.map(({ key, label }, index) => {
                   const piece = stack[key];
                   const isOverriding = overridingCategory === key;
 
                   return (
                     <div
                       key={key}
-                      className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] p-4"
+                      className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] p-4 [animation:fade-in-up_0.3s_ease-out_backwards]"
+                      style={{ animationDelay: `${index * 60}ms` }}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2">
@@ -1703,6 +1704,11 @@ export default function Home() {
           {stack && (
             <div className="border-t border-neutral-200 dark:border-neutral-800 pt-6">
               <h2 className="text-xl font-semibold">Boilerplate</h2>
+              {prompt && (
+                <p className="mt-1 truncate text-sm text-neutral-500 dark:text-neutral-400" title={prompt}>
+                  {prompt}
+                </p>
+              )}
 
               {boilerplateStale && boilerplateJobState === "succeeded" && (
                 <div className="mt-2 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
