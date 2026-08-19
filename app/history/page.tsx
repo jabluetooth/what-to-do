@@ -5,6 +5,7 @@ import Link from "next/link";
 import { signIn } from "next-auth/react";
 import type { PlatformHint, PrdSection, StackCategory, StackRecommendation } from "@/lib/types";
 import SiteNav from "@/components/SiteNav";
+import Watermark from "@/components/Watermark";
 
 /** Mirrors GET /api/account/history's `projects` array entries. */
 interface HistoryProject {
@@ -152,7 +153,7 @@ function PrdSectionsAccordion({ sections }: { sections: PrdSection[] }) {
   }
 
   return (
-    <div className="divide-y divide-neutral-200 dark:divide-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-800">
+    <div className="divide-y divide-neutral-200 dark:divide-neutral-800 overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800">
       {sections.map((section) => {
         const isOpen = expanded.has(section.key);
         return (
@@ -246,7 +247,10 @@ export default function HistoryPage() {
     <>
       <SiteNav />
       <main className="mx-auto w-full max-w-2xl px-6 pt-20 pb-16">
-        <h1 className="text-2xl font-semibold tracking-tight">History</h1>
+        <div className="relative overflow-y-hidden pb-24">
+          <Watermark />
+          <h1 className="relative z-10 text-2xl font-semibold tracking-tight">History</h1>
+        </div>
 
         {state === "loading" && <p className="mt-8 text-sm text-neutral-500 dark:text-neutral-400">Loading…</p>}
 
@@ -342,14 +346,14 @@ export default function HistoryPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="history-detail-title"
-            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl"
+            className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xl"
           >
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start justify-between gap-4 border-b border-neutral-200 dark:border-neutral-800 px-6 py-5">
               <div className="min-w-0">
                 <h2 id="history-detail-title" className="text-sm font-semibold leading-snug">
                   {selected.prompt}
                 </h2>
-                <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                <p className="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">
                   {new Date(selected.createdAt).toLocaleDateString(undefined, {
                     year: "numeric",
                     month: "short",
@@ -370,69 +374,71 @@ export default function HistoryPage() {
               </button>
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              {selected.hasBoilerplate && selected.webContainerCompatible ? (
-                <Link
-                  href={`/preview/project/${selected.projectId}`}
-                  className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3.5 py-2 text-sm font-medium"
-                >
-                  Preview
-                </Link>
-              ) : (
-                <span className="inline-flex items-center rounded-md border border-neutral-200 dark:border-neutral-800 px-3.5 py-2 text-sm text-neutral-400 dark:text-neutral-600">
-                  Not available for preview
-                </span>
-              )}
-              {selected.hasBoilerplate ? (
-                <a
-                  href={`/api/account/history/${selected.projectId}/download`}
-                  className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3.5 py-2 text-sm font-medium"
-                >
-                  Download
-                </a>
-              ) : (
-                <span className="inline-flex items-center rounded-md border border-neutral-200 dark:border-neutral-800 px-3.5 py-2 text-sm text-neutral-400 dark:text-neutral-600">
-                  No boilerplate to download
-                </span>
-              )}
-            </div>
-
-            {selected.sections.length > 0 && (
-              <div className="mt-5">
-                <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
-                  Product Requirements
-                </p>
-                <div className="mt-2">
-                  <PrdSectionsAccordion key={selected.projectId} sections={selected.sections} />
-                </div>
+            <div className="themed-scrollbar space-y-5 overflow-y-auto px-6 py-5">
+              <div className="flex flex-wrap gap-2">
+                {selected.hasBoilerplate && selected.webContainerCompatible ? (
+                  <Link
+                    href={`/preview/project/${selected.projectId}`}
+                    className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3.5 py-2 text-sm font-medium"
+                  >
+                    Preview
+                  </Link>
+                ) : (
+                  <span className="inline-flex items-center rounded-md border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.02] px-3.5 py-2 text-sm text-neutral-400 dark:text-neutral-600">
+                    Not available for preview
+                  </span>
+                )}
+                {selected.hasBoilerplate ? (
+                  <a
+                    href={`/api/account/history/${selected.projectId}/download`}
+                    className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3.5 py-2 text-sm font-medium"
+                  >
+                    Download
+                  </a>
+                ) : (
+                  <span className="inline-flex items-center rounded-md border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.02] px-3.5 py-2 text-sm text-neutral-400 dark:text-neutral-600">
+                    No boilerplate to download
+                  </span>
+                )}
               </div>
-            )}
 
-            {selected.stack && (
-              <div className="mt-5">
-                <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
-                  Tech Stack
-                </p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {STACK_CATEGORIES.map(({ key, label }) => (
-                    <span
-                      key={key}
-                      title={`${label}: ${selected.stack![key].choice}`}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] px-2.5 py-1 text-xs"
-                    >
-                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900">
-                        {getStackCategoryIcon(key)}
+              {selected.sections.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
+                    Product Requirements
+                  </p>
+                  <div className="mt-2">
+                    <PrdSectionsAccordion key={selected.projectId} sections={selected.sections} />
+                  </div>
+                </div>
+              )}
+
+              {selected.stack && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
+                    Tech Stack
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {STACK_CATEGORIES.map(({ key, label }) => (
+                      <span
+                        key={key}
+                        title={`${label}: ${selected.stack![key].choice}`}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] px-2.5 py-1 text-xs"
+                      >
+                        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900">
+                          {getStackCategoryIcon(key)}
+                        </span>
+                        {selected.stack![key].choice}
                       </span>
-                      {selected.stack![key].choice}
-                    </span>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            <p className="mt-5 text-xs text-neutral-500">
-              Read-only summary — full editing of a saved project is coming soon.
-            </p>
+              <p className="text-xs text-neutral-500">
+                Read-only summary — full editing of a saved project is coming soon.
+              </p>
+            </div>
           </div>
         </div>
       )}

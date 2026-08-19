@@ -53,3 +53,35 @@ body {
     opacity: 1;
   }
 }
+
+/* A thin, theme-matched scrollbar for scrollable panels sitting inside a rounded card (e.g. the
+   History detail modal) — the browser's default scrollbar is wide enough to visibly clip past a
+   rounded corner and doesn't pick up the surrounding neutral palette at all. Written as plain CSS
+   (mirroring the @custom-variant dark selector above) rather than Tailwind's arbitrary-variant
+   pseudo-element syntax, since ::-webkit-scrollbar sub-parts aren't real elements Tailwind can
+   target cleanly with utilities. */
+.themed-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(212 212 212) transparent;
+}
+
+.dark .themed-scrollbar {
+  scrollbar-color: rgb(64 64 64) transparent;
+}
+
+.themed-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.themed-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.themed-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgb(212 212 212);
+  border-radius: 9999px;
+}
+
+.dark .themed-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgb(64 64 64);
+}
