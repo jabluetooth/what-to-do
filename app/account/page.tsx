@@ -54,7 +54,16 @@ export default async function AccountPage() {
   // only ever shows up as a "failed (401)" in the last push's stored error. Both are the same
   // user-facing situation — reconnect — so both get the same messaging below instead of the
   // second case showing as "Connected" while every push silently keeps failing the same way.
-  const pushRejectedCredentials = !lastPush?.repoUrl && (lastPush?.error?.includes("failed (401)") ?? false);
+  //
+  // Guarded by timestamp: a 401 recorded *before* the current connection's updatedAt happened
+  // against a since-replaced token — disconnecting and reconnecting doesn't touch that old row,
+  // so without this check the stale failure would keep flagging an already-fixed connection as
+  // broken forever, since nothing else ever clears it short of a brand new push attempt.
+  const pushRejectedCredentials =
+    !!connection &&
+    !lastPush?.repoUrl &&
+    (lastPush?.error?.includes("failed (401)") ?? false) &&
+    (lastPush ? lastPush.createdAt >= connection.updatedAt : false);
   const connectionNeedsReauth = connection ? !connection.usable || pushRejectedCredentials : false;
 
   // Explicit absolute assignments, not a toggle: negating a render-time snapshot meant a stale
@@ -175,7 +184,15 @@ export default async function AccountPage() {
               </a>
             </p>
           ) : (
-            <p className="mt-1 text-red-600 dark:text-red-400">Failed: {lastPush.error}</p>
+            <>
+              <p className="mt-1 text-red-600 dark:text-red-400">Failed: {lastPush.error}</p>
+              {connection && connection.usable && lastPush.createdAt < connection.updatedAt && (
+                <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                  Recorded before your most recent reconnect, so this doesn&apos;t reflect your current
+                  connection — it&apos;ll update the next time an auto-push runs.
+                </p>
+              )}
+            </>
           )}
         </div>
       )}

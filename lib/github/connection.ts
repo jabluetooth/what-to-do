@@ -15,6 +15,10 @@ export interface GithubConnectionStatus {
   scope: string;
   /** False when the stored token can't be decrypted (e.g. GITHUB_TOKEN_ENCRYPTION_KEY was rotated) — the row exists but is unusable, distinct from no connection at all. */
   usable: boolean;
+  /** When this connection (the current token) was last established — lets a caller tell a push
+   *  failure recorded against a *previous* token apart from one against this one (see app/account
+   *  usage: a stale pre-reconnect 401 shouldn't keep flagging an already-fixed connection). */
+  updatedAt: Date;
 }
 
 /**
@@ -77,9 +81,9 @@ export async function getGithubConnectionStatus(userId: string): Promise<GithubC
   if (!row) return null;
   try {
     decryptToken(row.encryptedAccessToken);
-    return { githubLogin: row.githubLogin, scope: row.scope, usable: true };
+    return { githubLogin: row.githubLogin, scope: row.scope, usable: true, updatedAt: row.updatedAt };
   } catch {
-    return { githubLogin: row.githubLogin, scope: row.scope, usable: false };
+    return { githubLogin: row.githubLogin, scope: row.scope, usable: false, updatedAt: row.updatedAt };
   }
 }
 
