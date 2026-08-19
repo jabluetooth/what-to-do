@@ -9,7 +9,7 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
-    "next": "16.3.1",
+    "next": "15.5.23",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "drizzle-orm": "latest",
