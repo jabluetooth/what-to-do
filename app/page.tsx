@@ -198,17 +198,6 @@ interface AccountStatus {
   lastPush: { repoUrl: string | null; error: string | null; createdAt: string } | null;
 }
 
-/** Mirrors one entry of GET /api/account/history's `projects` array. */
-interface HistoryProjectItem {
-  projectId: string;
-  prompt: string;
-  createdAt: string;
-  sections: PrdSection[];
-  lowConfidence: boolean;
-  stack: StackRecommendation | null;
-  hasBoilerplate: boolean;
-}
-
 /** One small badge icon per PRD section key (lib/llm/prd.ts's PRD_SECTION_DEFS) — purely
     decorative next to each card's title, so always aria-hidden; the visible title text already
     carries the meaning. Falls back to a plain generic square for any section key not listed
@@ -436,13 +425,6 @@ export default function Home() {
   const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null);
   const [accountLoading, setAccountLoading] = useState(false);
   const [accountActionBusy, setAccountActionBusy] = useState(false);
-
-  // History panel: signed-in only, lists past projects and loads one back into the same
-  // "converted" phase already used right after a guest->account conversion — full editing of an
-  // old project isn't wired up yet (see PRD gap analysis), so this is deliberately read-only.
-  const [showHistoryModal, setShowHistoryModal] = useState(false);
-  const [historyProjects, setHistoryProjects] = useState<HistoryProjectItem[] | null>(null);
-  const [historyLoading, setHistoryLoading] = useState(false);
 
   // Slideshow transition (hero/clarifying -> result/converted), forward-only: once a PRD exists
   // there's no in-app path back to the hero except "Start over," which resets everything and
@@ -684,15 +666,6 @@ export default function Home() {
   }, [showAccountModal]);
 
   useEffect(() => {
-    if (!showHistoryModal) return;
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setShowHistoryModal(false);
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showHistoryModal]);
-
-  useEffect(() => {
     if (!showManualForm) return;
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") setShowManualForm(false);
@@ -909,31 +882,6 @@ export default function Home() {
 
   function connectGithubForRepoAccess() {
     signIn("github", { redirectTo: "/" }, { scope: "read:user user:email repo" });
-  }
-
-  async function openHistoryModal() {
-    setShowHistoryModal(true);
-    setHistoryLoading(true);
-    try {
-      const res = await fetch("/api/account/history");
-      const data = await res.json();
-      if (res.ok) setHistoryProjects(data.projects);
-    } finally {
-      setHistoryLoading(false);
-    }
-  }
-
-  function viewHistoryProject(project: HistoryProjectItem) {
-    setState({
-      phase: "converted",
-      projectId: project.projectId,
-      prompt: project.prompt,
-      sections: project.sections,
-      lowConfidence: project.lowConfidence,
-      stack: project.stack,
-      hasBoilerplate: project.hasBoilerplate,
-    });
-    setShowHistoryModal(false);
   }
 
   async function keepWorking() {
@@ -1206,13 +1154,12 @@ export default function Home() {
           <div className="h-4 w-px bg-neutral-200 dark:bg-white/10 mx-1" />
           {isSignedIn ? (
             <>
-              <button
-                type="button"
-                onClick={openHistoryModal}
+              <Link
+                href="/history"
                 className="rounded-full px-3.5 py-2 text-sm font-medium text-neutral-500 dark:text-neutral-400 transition-colors hover:bg-neutral-100 dark:hover:bg-white/10 hover:text-neutral-900 dark:hover:text-white"
               >
                 History
-              </button>
+              </Link>
               <button
                 type="button"
                 onClick={openAccountModal}
@@ -2286,74 +2233,6 @@ export default function Home() {
               </div>
             ) : (
               <p className="mt-4 text-sm text-red-600 dark:text-red-400">Couldn&apos;t load account details.</p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {showHistoryModal && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowHistoryModal(false);
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="history-modal-title"
-            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <h2 id="history-modal-title" className="text-lg font-semibold">
-                History
-              </h2>
-              <button
-                type="button"
-                onClick={() => setShowHistoryModal(false)}
-                aria-label="Close"
-                className="rounded-full p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-white/10 dark:hover:text-white"
-              >
-                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
-                </svg>
-              </button>
-            </div>
-
-            <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
-              Past projects saved to your account. Selecting one shows a read-only summary — full editing of a
-              saved project is coming soon.
-            </p>
-
-            {historyLoading && !historyProjects ? (
-              <p className="mt-4 text-sm text-neutral-500 dark:text-neutral-400">Loading…</p>
-            ) : historyProjects && historyProjects.length > 0 ? (
-              <ul className="mt-4 divide-y divide-neutral-200 dark:divide-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-800">
-                {historyProjects.map((project) => (
-                  <li key={project.projectId}>
-                    <button
-                      type="button"
-                      onClick={() => viewHistoryProject(project)}
-                      className="block w-full px-4 py-3 text-left hover:bg-neutral-50 dark:hover:bg-white/5"
-                    >
-                      <p className="truncate text-sm font-medium">{project.prompt}</p>
-                      <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
-                        {new Date(project.createdAt).toLocaleDateString(undefined, {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })}
-                        {project.stack && " · Tech stack"}
-                        {project.hasBoilerplate && " · Boilerplate"}
-                      </p>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-4 text-sm text-neutral-500 dark:text-neutral-400">
-                No saved projects yet — sign up from a guest session to keep one here.
-              </p>
             )}
           </div>
         </div>

@@ -3,9 +3,11 @@ import { inArray, eq, desc } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { getDb } from "@/lib/db/client";
 import { projects, prdVersions, stackVersions, boilerplateVersions } from "@/lib/db/schema";
-import type { PrdSection, StackRecommendation } from "@/lib/types";
+import type { PlatformHint, PrdSection, StackRecommendation } from "@/lib/types";
 
-const HISTORY_LIMIT = 20;
+/** A dedicated browsing/search page (app/history) rather than the old compact modal, so a more
+ *  generous cap is worth it — still bounded, not unpaginated. */
+const HISTORY_LIMIT = 50;
 
 export interface HistoryProject {
   projectId: string;
@@ -15,6 +17,9 @@ export interface HistoryProject {
   lowConfidence: boolean;
   stack: StackRecommendation | null;
   hasBoilerplate: boolean;
+  /** Only present when the original prompt's optional hints included one — most historical
+   *  entries won't have this, since it's opt-in on the intake form. */
+  platform: PlatformHint | null;
 }
 
 /**
@@ -34,7 +39,7 @@ export async function GET() {
 
   const db = getDb();
   const userProjects = await db
-    .select({ id: projects.id, prompt: projects.prompt, createdAt: projects.createdAt })
+    .select({ id: projects.id, prompt: projects.prompt, createdAt: projects.createdAt, hints: projects.hints })
     .from(projects)
     .where(eq(projects.userId, session.user.id))
     .orderBy(desc(projects.updatedAt))
@@ -79,6 +84,7 @@ export async function GET() {
     lowConfidence: latestPrd.get(p.id)?.lowConfidence ?? false,
     stack: latestStack.get(p.id) ?? null,
     hasBoilerplate: hasBoilerplate.has(p.id),
+    platform: p.hints?.platform ?? null,
   }));
 
   return NextResponse.json({ projects: result });
