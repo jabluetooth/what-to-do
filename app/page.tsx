@@ -374,6 +374,13 @@ export default function Home() {
   // plays its scramble-in as soon as the page loads, not just when a fresh idea lands.
   const [titlePlay, setTitlePlay] = useState(0);
   const [showSignInModal, setShowSignInModal] = useState(false);
+  // Distinct from SiteNav's own sign-in check (a separate, simple GET each — consistent with how
+  // every other lightweight fetch in this app is independently re-fetched rather than shared).
+  // Needed here specifically to pick the right "save this project" behavior below: an
+  // already-signed-in visitor generating a fresh guest-session project shouldn't be told to
+  // "sign up" or sent through another GitHub OAuth round trip — they should just get a direct
+  // save.
+  const [isSignedIn, setIsSignedIn] = useState(false);
 
   // Slideshow transition (hero/clarifying -> result/converted), forward-only: once a PRD exists
   // there's no in-app path back to the hero except "Start over," which resets everything and
@@ -468,6 +475,11 @@ export default function Home() {
 
   const [sessionTtlSeconds, setSessionTtlSeconds] = useState<number | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  // For the isSignedIn "save directly" path below — a distinct busy/error pair from the
+  // sign-up-via-OAuth path (handleSignUpClick), since this one is a same-page fetch, not a
+  // full-page redirect, so it needs its own visible pending/failure state.
+  const [savingProject, setSavingProject] = useState(false);
+  const [saveProjectError, setSaveProjectError] = useState<string | null>(null);
   // Set right before signIn()'s full-page navigation so the pagehide handler below can tell
   // "leaving to sign in" apart from "actually closing the tab" — purging the guest session on
   // the way to GitHub would delete the exact data /api/account/convert needs on the way back.
@@ -551,6 +563,7 @@ export default function Home() {
         const sessionRes = await fetch("/api/auth/session");
         const sessionData = await sessionRes.json();
         const signedIn = Boolean(sessionData?.user);
+        if (!cancelled) setIsSignedIn(signedIn);
         if (cancelled || !signedIn) return;
 
         const convertRes = await fetch("/api/account/convert", { method: "POST" });
@@ -612,6 +625,15 @@ export default function Home() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showManualForm]);
+
+  useEffect(() => {
+    if (!showExitConfirm) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setShowExitConfirm(false);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showExitConfirm]);
 
   useEffect(() => {
     if (isPostPrd) {
@@ -755,6 +777,7 @@ export default function Home() {
   }
 
   function requestStartOver() {
+    setSaveProjectError(null);
     setShowExitConfirm(true);
   }
 
@@ -777,6 +800,49 @@ export default function Home() {
     if (boilerplateJobActive) return;
     signingInRef.current = true;
     signIn("github", { redirectTo: "/" });
+  }
+
+  /**
+   * The isSignedIn counterpart to handleSignUpClick: the visitor is already authenticated, so
+   * there's no OAuth round trip to do — just call the same conversion endpoint the post-OAuth
+   * mount effect calls, directly. convertGuestSessionToProject is a one-shot, terminal migration
+   * (it deletes the guest session once it succeeds), so this can only ever run once per project
+   * — matches the button being replaced by the "converted" phase view right after.
+   */
+  async function saveToAccount() {
+    if (boilerplateJobActive) return;
+    setSavingProject(true);
+    setSaveProjectError(null);
+    try {
+      const res = await fetch("/api/account/convert", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setSaveProjectError(data.error ?? "Couldn't save your project right now.");
+        return;
+      }
+      if (data.project) {
+        const p = data.project;
+        setState({
+          phase: "converted",
+          projectId: p.projectId,
+          prompt: p.prompt,
+          sections: p.sections,
+          lowConfidence: p.lowConfidence,
+          stack: p.stack,
+          hasBoilerplate: p.hasBoilerplate,
+        });
+        setShowExitConfirm(false);
+      }
+    } catch {
+      setSaveProjectError("Network error — please try again.");
+    } finally {
+      setSavingProject(false);
+    }
+  }
+
+  function saveOrSignUp() {
+    if (isSignedIn) void saveToAccount();
+    else handleSignUpClick();
   }
 
   async function keepWorking() {
@@ -1178,8 +1244,8 @@ export default function Home() {
           {sessionTtlSeconds !== null && sessionTtlSeconds < TIMEOUT_WARNING_THRESHOLD_SECONDS ? (
             <div className="rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
               <p role="status" aria-live="polite">
-                Your session expires in {formatDuration(sessionTtlSeconds)} due to inactivity — guest work isn&apos;t
-                saved.
+                Your session expires in {formatDuration(sessionTtlSeconds)} due to inactivity —{" "}
+                {isSignedIn ? "this project isn't saved to your account yet." : "guest work isn't saved."}
               </p>
               <div className="mt-2 flex gap-3">
                 <button
@@ -1192,89 +1258,57 @@ export default function Home() {
                 </button>
                 <button
                   type="button"
-                  onClick={handleSignUpClick}
-                  disabled={boilerplateJobActive}
+                  onClick={saveOrSignUp}
+                  disabled={boilerplateJobActive || savingProject}
                   title={boilerplateJobActive ? "Wait for boilerplate generation to finish first" : undefined}
                   className="text-xs font-medium underline disabled:no-underline disabled:opacity-50"
                 >
-                  Sign up to save
+                  {isSignedIn ? (savingProject ? "Saving…" : "Save to my account") : "Sign up to save"}
                 </button>
               </div>
             </div>
           ) : (
             <div className="flex items-start justify-between gap-3">
-              <p className="text-xs text-neutral-500">
-                Guest session — your work isn&apos;t saved.{" "}
-                <button
-                  type="button"
-                  onClick={handleSignUpClick}
-                  disabled={boilerplateJobActive}
-                  title={boilerplateJobActive ? "Wait for boilerplate generation to finish first" : undefined}
-                  className="underline disabled:no-underline disabled:opacity-50"
-                >
-                  Sign up to save
-                </button>
-                {boilerplateJobActive && " (available once boilerplate generation finishes)"}
-              </p>
-              {!showExitConfirm && (
-                <button
-                  type="button"
-                  onClick={requestStartOver}
-                  className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:underline"
-                >
-                  Start over
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-3 w-3"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
+              <div className="text-xs text-neutral-500">
+                <p>
+                  {isSignedIn ? (
+                    <>This project isn&apos;t saved to your account yet.{" "}</>
+                  ) : (
+                    <>Guest session — your work isn&apos;t saved.{" "}</>
+                  )}
+                  <button
+                    type="button"
+                    onClick={saveOrSignUp}
+                    disabled={boilerplateJobActive || savingProject}
+                    title={boilerplateJobActive ? "Wait for boilerplate generation to finish first" : undefined}
+                    className="underline disabled:no-underline disabled:opacity-50"
                   >
-                    <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-                    <polyline points="21 3 21 9 15 9" />
-                  </svg>
-                </button>
-              )}
-            </div>
-          )}
-
-          {showExitConfirm && (
-            <div className="rounded-md border border-neutral-300 dark:border-neutral-700 p-4 space-y-2">
-              <p className="text-sm font-medium">Sign up to save this project before starting over?</p>
-              {boilerplateJobActive && (
-                <p className="text-xs text-amber-700 dark:text-amber-400">
-                  Boilerplate is still generating — sign-up isn&apos;t available until it finishes.
+                    {isSignedIn ? (savingProject ? "Saving…" : "Save to my account") : "Sign up to save"}
+                  </button>
+                  {boilerplateJobActive && ` (available once boilerplate generation finishes)`}
                 </p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={handleSignUpClick}
-                  disabled={boilerplateJobActive}
-                  className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-                >
-                  Sign up to save
-                </button>
-                <button
-                  type="button"
-                  onClick={discardAndStartOver}
-                  disabled={exiting}
-                  className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-                >
-                  {exiting ? "Discarding…" : "Discard & start over"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowExitConfirm(false)}
-                  disabled={exiting}
-                  className="text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:underline disabled:opacity-50"
-                >
-                  Cancel
-                </button>
+                {saveProjectError && <p className="mt-1 text-red-600 dark:text-red-400">{saveProjectError}</p>}
               </div>
+              <button
+                type="button"
+                onClick={requestStartOver}
+                className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:underline"
+              >
+                Start over
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-3 w-3"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                  <polyline points="21 3 21 9 15 9" />
+                </svg>
+              </button>
             </div>
           )}
 
@@ -1933,6 +1967,75 @@ export default function Home() {
                 Wait for the current boilerplate job to finish before signing in.
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {showExitConfirm && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowExitConfirm(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="exit-confirm-title"
+            className="w-full max-w-sm rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <h2 id="exit-confirm-title" className="text-lg font-semibold">
+                {isSignedIn ? "Save this project before starting over?" : "Sign up to save before starting over?"}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowExitConfirm(false)}
+                disabled={exiting}
+                aria-label="Close"
+                className="shrink-0 rounded-full p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-white/10 dark:hover:text-white disabled:opacity-50"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
+                </svg>
+              </button>
+            </div>
+
+            {boilerplateJobActive && (
+              <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                Boilerplate is still generating — saving isn&apos;t available until it finishes.
+              </p>
+            )}
+            {saveProjectError && (
+              <p className="mt-2 text-xs text-red-600 dark:text-red-400">{saveProjectError}</p>
+            )}
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={saveOrSignUp}
+                disabled={boilerplateJobActive || savingProject}
+                className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3.5 py-2 text-sm font-medium disabled:opacity-50"
+              >
+                {isSignedIn ? (savingProject ? "Saving…" : "Save to my account") : "Sign up to save"}
+              </button>
+              <button
+                type="button"
+                onClick={discardAndStartOver}
+                disabled={exiting}
+                className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3.5 py-2 text-sm font-medium disabled:opacity-50"
+              >
+                {exiting ? "Discarding…" : "Discard & start over"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowExitConfirm(false)}
+                disabled={exiting}
+                className="text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:underline disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
