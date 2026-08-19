@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { signIn } from "next-auth/react";
+import { signIn, signOut } from "next-auth/react";
 import type { PlatformHint, PrdSection, RandomIdea, ScopeSizeHint, StackCategory, StackRecommendation } from "@/lib/types";
 import { STACK_ALTERNATIVES } from "@/lib/pipeline/stackMatrix";
 
@@ -187,6 +187,27 @@ type FlowState =
       hasBoilerplate: boolean;
     }
   | { phase: "error"; message: string };
+
+/** Mirrors GET /api/account/status. */
+interface AccountStatus {
+  email: string | null;
+  name: string | null;
+  autoPushToGithub: boolean;
+  connection: { githubLogin: string; scope: string; usable: boolean } | null;
+  connectionNeedsReauth: boolean;
+  lastPush: { repoUrl: string | null; error: string | null; createdAt: string } | null;
+}
+
+/** Mirrors one entry of GET /api/account/history's `projects` array. */
+interface HistoryProjectItem {
+  projectId: string;
+  prompt: string;
+  createdAt: string;
+  sections: PrdSection[];
+  lowConfidence: boolean;
+  stack: StackRecommendation | null;
+  hasBoilerplate: boolean;
+}
 
 /** One small badge icon per PRD section key (lib/llm/prd.ts's PRD_SECTION_DEFS) — purely
     decorative next to each card's title, so always aria-hidden; the visible title text already
@@ -408,6 +429,20 @@ export default function Home() {
   const [titlePlay, setTitlePlay] = useState(0);
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [showSignInModal, setShowSignInModal] = useState(false);
+
+  // Account modal: a client-fetch mirror of app/account/page.tsx (which stays as-is for direct
+  // links/bookmarks) so opening it doesn't cost a full navigation away from whatever's on screen.
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null);
+  const [accountLoading, setAccountLoading] = useState(false);
+  const [accountActionBusy, setAccountActionBusy] = useState(false);
+
+  // History panel: signed-in only, lists past projects and loads one back into the same
+  // "converted" phase already used right after a guest->account conversion — full editing of an
+  // old project isn't wired up yet (see PRD gap analysis), so this is deliberately read-only.
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyProjects, setHistoryProjects] = useState<HistoryProjectItem[] | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   // Slideshow transition (hero/clarifying -> result/converted), forward-only: once a PRD exists
   // there's no in-app path back to the hero except "Start over," which resets everything and
@@ -640,6 +675,24 @@ export default function Home() {
   }, [showSignInModal]);
 
   useEffect(() => {
+    if (!showAccountModal) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setShowAccountModal(false);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showAccountModal]);
+
+  useEffect(() => {
+    if (!showHistoryModal) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setShowHistoryModal(false);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showHistoryModal]);
+
+  useEffect(() => {
     if (!showManualForm) return;
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") setShowManualForm(false);
@@ -812,6 +865,75 @@ export default function Home() {
     if (boilerplateJobActive) return;
     signingInRef.current = true;
     signIn("github", { redirectTo: "/" });
+  }
+
+  async function openAccountModal() {
+    setShowAccountModal(true);
+    setAccountLoading(true);
+    try {
+      const res = await fetch("/api/account/status");
+      const data = await res.json();
+      if (res.ok) setAccountStatus(data);
+    } finally {
+      setAccountLoading(false);
+    }
+  }
+
+  async function toggleAutoPush(enabled: boolean) {
+    setAccountActionBusy(true);
+    try {
+      const res = await fetch("/api/account/github/autopush", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      if (res.ok) setAccountStatus((prev) => (prev ? { ...prev, autoPushToGithub: enabled } : prev));
+    } finally {
+      setAccountActionBusy(false);
+    }
+  }
+
+  async function disconnectGithubAccount() {
+    setAccountActionBusy(true);
+    try {
+      const res = await fetch("/api/account/github/disconnect", { method: "POST" });
+      if (res.ok) {
+        setAccountStatus((prev) =>
+          prev ? { ...prev, connection: null, connectionNeedsReauth: false, autoPushToGithub: false } : prev
+        );
+      }
+    } finally {
+      setAccountActionBusy(false);
+    }
+  }
+
+  function connectGithubForRepoAccess() {
+    signIn("github", { redirectTo: "/" }, { scope: "read:user user:email repo" });
+  }
+
+  async function openHistoryModal() {
+    setShowHistoryModal(true);
+    setHistoryLoading(true);
+    try {
+      const res = await fetch("/api/account/history");
+      const data = await res.json();
+      if (res.ok) setHistoryProjects(data.projects);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  function viewHistoryProject(project: HistoryProjectItem) {
+    setState({
+      phase: "converted",
+      projectId: project.projectId,
+      prompt: project.prompt,
+      sections: project.sections,
+      lowConfidence: project.lowConfidence,
+      stack: project.stack,
+      hasBoilerplate: project.hasBoilerplate,
+    });
+    setShowHistoryModal(false);
   }
 
   async function keepWorking() {
@@ -1083,12 +1205,22 @@ export default function Home() {
           </div>
           <div className="h-4 w-px bg-neutral-200 dark:bg-white/10 mx-1" />
           {isSignedIn ? (
-            <Link
-              href="/account"
-              className="rounded-full bg-neutral-900 dark:bg-white px-4 py-2 text-sm font-bold text-white dark:text-neutral-900 transition-colors hover:bg-neutral-700 dark:hover:bg-neutral-200"
-            >
-              Account
-            </Link>
+            <>
+              <button
+                type="button"
+                onClick={openHistoryModal}
+                className="rounded-full px-3.5 py-2 text-sm font-medium text-neutral-500 dark:text-neutral-400 transition-colors hover:bg-neutral-100 dark:hover:bg-white/10 hover:text-neutral-900 dark:hover:text-white"
+              >
+                History
+              </button>
+              <button
+                type="button"
+                onClick={openAccountModal}
+                className="rounded-full bg-neutral-900 dark:bg-white px-4 py-2 text-sm font-bold text-white dark:text-neutral-900 transition-colors hover:bg-neutral-700 dark:hover:bg-neutral-200"
+              >
+                Account
+              </button>
+            </>
           ) : (
             <button
               type="button"
@@ -2013,6 +2145,214 @@ export default function Home() {
             {boilerplateJobActive && (
               <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
                 Wait for the current boilerplate job to finish before signing in.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showAccountModal && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowAccountModal(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="account-modal-title"
+            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <h2 id="account-modal-title" className="text-lg font-semibold">
+                Account
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowAccountModal(false)}
+                aria-label="Close"
+                className="rounded-full p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-white/10 dark:hover:text-white"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
+                </svg>
+              </button>
+            </div>
+
+            {accountLoading && !accountStatus ? (
+              <p className="mt-4 text-sm text-neutral-500 dark:text-neutral-400">Loading…</p>
+            ) : accountStatus ? (
+              <div className="mt-4 space-y-6">
+                <div>
+                  <p className="text-sm">
+                    Signed in as <strong>{accountStatus.email ?? accountStatus.name}</strong>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => signOut({ redirectTo: "/" })}
+                    className="mt-3 rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium"
+                  >
+                    Sign out
+                  </button>
+                </div>
+
+                <div className="border-t border-neutral-200 dark:border-neutral-800 pt-6">
+                  <h3 className="text-sm font-semibold">GitHub repo push</h3>
+                  <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+                    When enabled, a new GitHub repo is created automatically from your boilerplate the next time
+                    you sign up from a guest session.
+                  </p>
+
+                  {accountStatus.connection ? (
+                    <div className="mt-4 space-y-3">
+                      {!accountStatus.connectionNeedsReauth ? (
+                        <p className="text-sm">
+                          Connected as <strong>{accountStatus.connection.githubLogin}</strong> (repo access
+                          granted).
+                        </p>
+                      ) : (
+                        <p className="text-sm text-amber-700 dark:text-amber-400">
+                          Your GitHub connection needs to be re-established (
+                          {!accountStatus.connection.usable
+                            ? "couldn't verify it's still valid"
+                            : "GitHub rejected the stored access, likely revoked on GitHub's side"}
+                          ) — disconnect below, then reconnect.
+                        </p>
+                      )}
+
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleAutoPush(!accountStatus.autoPushToGithub)}
+                          disabled={accountActionBusy || (accountStatus.connectionNeedsReauth && !accountStatus.autoPushToGithub)}
+                          className="rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium disabled:opacity-50"
+                        >
+                          {accountStatus.autoPushToGithub ? "Turn off auto-push" : "Turn on auto-push"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={disconnectGithubAccount}
+                          disabled={accountActionBusy}
+                          className="rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium disabled:opacity-50"
+                        >
+                          Disconnect GitHub
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={connectGithubForRepoAccess}
+                      className="mt-4 rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium"
+                    >
+                      Connect GitHub for repo access
+                    </button>
+                  )}
+
+                  {accountStatus.lastPush && (
+                    <div className="mt-4 rounded-md border border-neutral-200 dark:border-neutral-800 p-3 text-sm">
+                      <p className="font-medium">Last push</p>
+                      {accountStatus.lastPush.repoUrl ? (
+                        <p className="mt-1">
+                          <a
+                            href={accountStatus.lastPush.repoUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline"
+                          >
+                            {accountStatus.lastPush.repoUrl}
+                          </a>
+                        </p>
+                      ) : (
+                        <>
+                          <p className="mt-1 text-red-600 dark:text-red-400">Failed: {accountStatus.lastPush.error}</p>
+                          {/* connectionNeedsReauth is already timestamp-guarded server-side (see
+                              lib/github/connection.ts) — if this error text looks like a bad-
+                              credentials failure but the connection ISN'T flagged as needing
+                              reauth, the only way that combination happens is a stale record from
+                              before the most recent reconnect. */}
+                          {!accountStatus.connectionNeedsReauth && accountStatus.lastPush.error?.includes("failed (401)") && (
+                            <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                              Recorded before your most recent reconnect, so this doesn&apos;t reflect your current
+                              connection — it&apos;ll update the next time an auto-push runs.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-4 text-sm text-red-600 dark:text-red-400">Couldn&apos;t load account details.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showHistoryModal && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowHistoryModal(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="history-modal-title"
+            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <h2 id="history-modal-title" className="text-lg font-semibold">
+                History
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowHistoryModal(false)}
+                aria-label="Close"
+                className="rounded-full p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-white/10 dark:hover:text-white"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
+                </svg>
+              </button>
+            </div>
+
+            <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+              Past projects saved to your account. Selecting one shows a read-only summary — full editing of a
+              saved project is coming soon.
+            </p>
+
+            {historyLoading && !historyProjects ? (
+              <p className="mt-4 text-sm text-neutral-500 dark:text-neutral-400">Loading…</p>
+            ) : historyProjects && historyProjects.length > 0 ? (
+              <ul className="mt-4 divide-y divide-neutral-200 dark:divide-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-800">
+                {historyProjects.map((project) => (
+                  <li key={project.projectId}>
+                    <button
+                      type="button"
+                      onClick={() => viewHistoryProject(project)}
+                      className="block w-full px-4 py-3 text-left hover:bg-neutral-50 dark:hover:bg-white/5"
+                    >
+                      <p className="truncate text-sm font-medium">{project.prompt}</p>
+                      <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+                        {new Date(project.createdAt).toLocaleDateString(undefined, {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        })}
+                        {project.stack && " · Tech stack"}
+                        {project.hasBoilerplate && " · Boilerplate"}
+                      </p>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-4 text-sm text-neutral-500 dark:text-neutral-400">
+                No saved projects yet — sign up from a guest session to keep one here.
               </p>
             )}
           </div>

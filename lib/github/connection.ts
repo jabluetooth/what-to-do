@@ -22,6 +22,31 @@ export interface GithubConnectionStatus {
 }
 
 /**
+ * Shared by app/account and the /api/account/status route so this exact logic — and its one
+ * subtle requirement, the timestamp guard below — only exists in one place. A connection needs
+ * reauth when its token can't be decrypted at all, OR when the most recent push recorded against
+ * it failed with GitHub itself rejecting the credentials (a 401, distinct from other failures
+ * like a 422 name collision or 403 scope issue, which don't mean the token itself is bad).
+ *
+ * The timestamp check matters: disconnecting and reconnecting replaces the token but doesn't
+ * touch old push-result rows, so a 401 from *before* the current connection's updatedAt is stale
+ * — it happened against a since-replaced token and says nothing about whether this one works.
+ * Without this guard, that stale failure would keep flagging an already-fixed connection as
+ * broken forever, since nothing else ever clears it short of a brand new push attempt.
+ */
+export function connectionNeedsReauth(
+  connection: GithubConnectionStatus | null,
+  lastPush: { repoUrl: string | null; error: string | null; createdAt: Date } | null
+): boolean {
+  if (!connection) return false;
+  const pushRejectedCredentials =
+    !lastPush?.repoUrl &&
+    (lastPush?.error?.includes("failed (401)") ?? false) &&
+    (lastPush ? lastPush.createdAt >= connection.updatedAt : false);
+  return !connection.usable || pushRejectedCredentials;
+}
+
+/**
  * Exact-token scope check, not substring: GitHub's OAuth scope string is space-delimited, and
  * "repo" is a substring of "public_repo"/"repo:status"/"repo_deployment"/"admin:repo_hook" —
  * `.includes("repo")` would treat all of those as full repo-write access, which they aren't.

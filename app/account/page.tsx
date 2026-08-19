@@ -3,7 +3,12 @@ import { auth, signIn, signOut } from "@/lib/auth";
 import { getDb } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { getGithubConnectionStatus, disconnectGithub, setAutoPushToGithub } from "@/lib/github/connection";
+import {
+  getGithubConnectionStatus,
+  disconnectGithub,
+  setAutoPushToGithub,
+  connectionNeedsReauth as deriveConnectionNeedsReauth,
+} from "@/lib/github/connection";
 import { getLatestGithubPushResult } from "@/lib/github/pushBoilerplate";
 
 const buttonClass =
@@ -48,23 +53,7 @@ export default async function AccountPage() {
   const connection = await getGithubConnectionStatus(userId);
   const autoPushToGithub = userRow?.autoPushToGithub ?? false;
   const lastPush = await getLatestGithubPushResult(userId);
-  // getGithubConnectionStatus's `usable` only catches a token that fails to *decrypt* (a rotated
-  // encryption key) — it can't catch a token that decrypts fine but GitHub itself has since
-  // rejected (revoked by the user on GitHub's side, or otherwise invalidated), which instead
-  // only ever shows up as a "failed (401)" in the last push's stored error. Both are the same
-  // user-facing situation — reconnect — so both get the same messaging below instead of the
-  // second case showing as "Connected" while every push silently keeps failing the same way.
-  //
-  // Guarded by timestamp: a 401 recorded *before* the current connection's updatedAt happened
-  // against a since-replaced token — disconnecting and reconnecting doesn't touch that old row,
-  // so without this check the stale failure would keep flagging an already-fixed connection as
-  // broken forever, since nothing else ever clears it short of a brand new push attempt.
-  const pushRejectedCredentials =
-    !!connection &&
-    !lastPush?.repoUrl &&
-    (lastPush?.error?.includes("failed (401)") ?? false) &&
-    (lastPush ? lastPush.createdAt >= connection.updatedAt : false);
-  const connectionNeedsReauth = connection ? !connection.usable || pushRejectedCredentials : false;
+  const connectionNeedsReauth = deriveConnectionNeedsReauth(connection, lastPush);
 
   // Explicit absolute assignments, not a toggle: negating a render-time snapshot meant a stale
   // page (two tabs open, a bfcache restore) could invert the *opposite* of what the user
