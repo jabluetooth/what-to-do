@@ -324,6 +324,17 @@ function Watermark() {
   );
 }
 
+/** Three small pulsing dots — sized independently of the surrounding text via its own font-size. */
+function LoadingDots() {
+  return (
+    <span className="ml-1 inline-flex items-end gap-0.5 text-[6px]" aria-hidden="true">
+      <span className="h-[1em] w-[1em] rounded-full bg-current [animation:loading-dot_1.4s_ease-in-out_infinite]" />
+      <span className="h-[1em] w-[1em] rounded-full bg-current [animation:loading-dot_1.4s_ease-in-out_infinite] [animation-delay:0.2s]" />
+      <span className="h-[1em] w-[1em] rounded-full bg-current [animation:loading-dot_1.4s_ease-in-out_infinite] [animation-delay:0.4s]" />
+    </span>
+  );
+}
+
 const ABOUT_STEPS = [
   {
     title: "Start with an idea",
@@ -1163,7 +1174,14 @@ export default function Home() {
                       disabled={isSubmitting}
                       className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-5 py-2.5 text-base font-medium disabled:opacity-50"
                     >
-                      {isSubmitting ? "Generating…" : "Generate PRD"}
+                      {isSubmitting ? (
+                        <>
+                          Generating
+                          <LoadingDots />
+                        </>
+                      ) : (
+                        "Generate PRD"
+                      )}
                     </button>
                     <button
                       type="button"
@@ -1281,14 +1299,6 @@ export default function Home() {
               {boilerplateJobActive && " (available once boilerplate generation finishes)"}
             </p>
           )}
-
-          {/* Same watermark, same size/placement as the hero's — placed here, outside the slide
-              switcher below, because that switcher needs its own overflow-hidden to clip the
-              inactive slide during the transform, and an overflow-hidden ancestor would clip the
-              watermark's own full-bleed breakout too. */}
-          <div className="relative pb-40">
-            <Watermark />
-          </div>
 
           <div className="relative overflow-hidden">
             <div
@@ -1737,6 +1747,16 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Same watermark, same size, as the hero's — placed here (peeking out below the PRD
+              box / Tech Stack cards, same as it peeks out below the hero's own headline/CTA
+              block) rather than above them, so it doesn't just sit right under the header with
+              barely any content above it. Kept outside the slide switcher above: that switcher
+              needs its own overflow-hidden to clip the inactive slide during the transform, and
+              an overflow-hidden ancestor would clip the watermark's own full-bleed breakout too. */}
+          <div className="relative pb-40">
+            <Watermark />
+          </div>
+
           {!showExitConfirm ? (
             <div className="flex justify-end">
               <button
@@ -2096,7 +2116,14 @@ export default function Home() {
                 disabled={isSubmitting || !prompt.trim()}
                 className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium disabled:opacity-50"
               >
-                {isSubmitting ? "Generating…" : "Generate PRD"}
+                {isSubmitting ? (
+                  <>
+                    Generating
+                    <LoadingDots />
+                  </>
+                ) : (
+                  "Generate PRD"
+                )}
               </button>
 
               {/* The hero's own status paragraph is behind this modal's backdrop and wouldn't be
