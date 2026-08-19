@@ -12,6 +12,14 @@ import Watermark from "@/components/Watermark";
 const SESSION_POLL_INTERVAL_MS = 30_000;
 const TIMEOUT_WARNING_THRESHOLD_SECONDS = 5 * 60;
 
+/** color-scheme: dark (globals.css) already makes a <select>'s native options popup render dark
+ *  by default, but that's the browser's own generic dark styling — explicit classes here pin it
+ *  to this app's actual neutral palette instead, for both themes (kept even though the site
+ *  forces dark, matching every other component's dark: pairing in case that forcing is ever
+ *  relaxed). Chromium and Firefox both respect background-color/color set directly on <option>;
+ *  Safari's support is partial, where it just falls back to color-scheme's default dark styling. */
+const OPTION_CLASS = "bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100";
+
 function formatDuration(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
@@ -1465,7 +1473,7 @@ export default function Home() {
           <button
             type="button"
             onClick={() => setActiveSlide("prd")}
-            className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium"
+            className="text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:underline hover:text-neutral-900 dark:hover:text-white"
           >
             ← Back to PRD
           </button>
@@ -1507,9 +1515,9 @@ export default function Home() {
                     disabled={stackLoading}
                     className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
                   >
-                    <option value="">No preference</option>
-                    <option value="web">Web</option>
-                    <option value="mobile">Mobile</option>
+                    <option value="" className={OPTION_CLASS}>No preference</option>
+                    <option value="web" className={OPTION_CLASS}>Web</option>
+                    <option value="mobile" className={OPTION_CLASS}>Mobile</option>
                   </select>
                 </div>
                 <div>
@@ -1523,10 +1531,10 @@ export default function Home() {
                     disabled={stackLoading}
                     className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
                   >
-                    <option value="">No preference</option>
-                    <option value="weekend">Weekend project</option>
-                    <option value="mvp">MVP</option>
-                    <option value="production">Production app</option>
+                    <option value="" className={OPTION_CLASS}>No preference</option>
+                    <option value="weekend" className={OPTION_CLASS}>Weekend project</option>
+                    <option value="mvp" className={OPTION_CLASS}>MVP</option>
+                    <option value="production" className={OPTION_CLASS}>Production app</option>
                   </select>
                 </div>
                 <div>
@@ -2096,11 +2104,11 @@ export default function Home() {
                     value={platform}
                     onChange={(e) => setPlatform(e.target.value as PlatformHint | "")}
                     disabled={isSubmitting}
-                    className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm"
                   >
-                    <option value="">No preference</option>
-                    <option value="web">Web</option>
-                    <option value="mobile">Mobile</option>
+                    <option value="" className={OPTION_CLASS}>No preference</option>
+                    <option value="web" className={OPTION_CLASS}>Web</option>
+                    <option value="mobile" className={OPTION_CLASS}>Mobile</option>
                   </select>
                 </div>
 
@@ -2113,12 +2121,12 @@ export default function Home() {
                     value={scopeSize}
                     onChange={(e) => setScopeSize(e.target.value as ScopeSizeHint | "")}
                     disabled={isSubmitting}
-                    className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm"
                   >
-                    <option value="">No preference</option>
-                    <option value="weekend">Weekend project</option>
-                    <option value="mvp">MVP</option>
-                    <option value="production">Production app</option>
+                    <option value="" className={OPTION_CLASS}>No preference</option>
+                    <option value="weekend" className={OPTION_CLASS}>Weekend project</option>
+                    <option value="mvp" className={OPTION_CLASS}>MVP</option>
+                    <option value="production" className={OPTION_CLASS}>Production app</option>
                   </select>
                 </div>
               </div>

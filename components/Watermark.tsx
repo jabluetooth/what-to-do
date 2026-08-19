@@ -15,12 +15,20 @@
  *
  * Needs a `relative` ancestor to pin against (via `absolute bottom-0`) and a sibling wrapped in
  * `relative z-10` to render above it — an absolutely-positioned `z-0` element still paints above
- * plain in-flow siblings in the same stacking context otherwise.
+ * plain in-flow siblings in the same stacking context otherwise. That z-10 requirement holds for
+ * the `fixed` variant below too, even as a page-level sibling rather than a descendant: a
+ * position:fixed z-0 element still paints above a plain non-positioned sibling regardless of DOM
+ * order, so whatever's meant to sit above it still needs its own explicit stacking (see
+ * app/history/page.tsx's `<main className="relative z-10 ...">`).
  */
-export default function Watermark() {
+export default function Watermark({ fixed = false }: { fixed?: boolean }) {
   return (
     <div
-      className="pointer-events-none absolute bottom-0 left-1/2 z-0 w-screen -translate-x-1/2 overflow-hidden"
+      className={`pointer-events-none z-0 overflow-hidden ${
+        fixed
+          ? "fixed inset-x-0 bottom-0"
+          : "absolute bottom-0 left-1/2 w-screen -translate-x-1/2"
+      }`}
       style={{ height: "0.92em", fontSize: "clamp(3rem, 14vw, 18rem)" }}
     >
       <p

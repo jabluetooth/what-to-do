@@ -246,11 +246,13 @@ export default function HistoryPage() {
   return (
     <>
       <SiteNav />
-      <main className="mx-auto w-full max-w-2xl px-6 pt-20 pb-16">
-        <div className="relative overflow-y-hidden pb-24">
-          <Watermark />
-          <h1 className="relative z-10 text-2xl font-semibold tracking-tight">History</h1>
-        </div>
+      {/* Pinned to the viewport bottom (not anchored to the hero like the home page's usage) —
+          History's content height varies a lot with the project count, so anchoring it to content
+          would put it right under the header for a short list instead of near the bottom of the
+          page. */}
+      <Watermark fixed />
+      <main className="relative z-10 mx-auto w-full max-w-2xl px-6 pt-20 pb-16">
+        <h1 className="text-2xl font-semibold tracking-tight">History</h1>
 
         {state === "loading" && <p className="mt-8 text-sm text-neutral-500 dark:text-neutral-400">Loading…</p>}
 
@@ -292,11 +294,17 @@ export default function HistoryPage() {
                 id="history-platform"
                 value={platformFilter}
                 onChange={(e) => setPlatformFilter(e.target.value as "all" | PlatformHint)}
-                className="rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm sm:w-40"
+                className="rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm sm:w-40"
               >
-                <option value="all">All platforms</option>
-                <option value="web">Web</option>
-                <option value="mobile">Mobile</option>
+                <option value="all" className="bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100">
+                  All platforms
+                </option>
+                <option value="web" className="bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100">
+                  Web
+                </option>
+                <option value="mobile" className="bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100">
+                  Mobile
+                </option>
               </select>
             </div>
 
@@ -350,7 +358,7 @@ export default function HistoryPage() {
           >
             <div className="flex items-start justify-between gap-4 border-b border-neutral-200 dark:border-neutral-800 px-6 py-5">
               <div className="min-w-0">
-                <h2 id="history-detail-title" className="text-sm font-semibold leading-snug">
+                <h2 id="history-detail-title" className="text-sm font-medium leading-snug">
                   {selected.prompt}
                 </h2>
                 <p className="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">
