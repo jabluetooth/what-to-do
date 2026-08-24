@@ -332,7 +332,7 @@ const ABOUT_STEPS = [
 const FAQ_ITEMS = [
   {
     q: "Do I need to sign up?",
-    a: "No. The whole flow — idea, PRD, tech stack, boilerplate, live preview — works as a guest. Sign in with GitHub only if you want to keep a project past your guest session, or push the generated code straight to a new repo.",
+    a: "No. The whole flow (idea, PRD, tech stack, boilerplate, live preview) works as a guest. Sign in with GitHub only if you want to keep a project past your guest session, or push the generated code straight to a new repo.",
   },
   {
     q: "How long does my guest session last?",
@@ -340,7 +340,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "Can I push the generated code to GitHub?",
-    a: "Yes, optionally. Sign in, grant repo access from your account page, and turn on auto-push — a private repo is created the next time you save a project.",
+    a: "Yes, optionally. Sign in, grant repo access from your account page, and turn on auto-push: a private repo is created the next time you save a project.",
   },
   {
     q: "Is the generated boilerplate actually tested?",
@@ -348,9 +348,74 @@ const FAQ_ITEMS = [
   },
   {
     q: "Is there a limit to how many times I can generate?",
-    a: "Yes, a small daily cap per stage to keep things fair on a free tier — signing in raises the limit.",
+    a: "Yes, a small daily cap per stage to keep things fair on a free tier. Signing in raises the limit.",
   },
 ];
+
+/** Single-open accordion (WAI-ARIA Accordion Pattern) — only one answer visible at a time, so a
+ *  long FAQ list stays scannable instead of dumping every answer on the page at once. */
+function FaqAccordion({ items }: { items: { q: string; a: string }[] }) {
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const baseId = useId();
+
+  return (
+    <div className="mt-10 divide-y divide-neutral-200 dark:divide-neutral-800 overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800">
+      {items.map((item, i) => {
+        const isOpen = openIndex === i;
+        const buttonId = `${baseId}-faq-button-${i}`;
+        const panelId = `${baseId}-faq-panel-${i}`;
+        return (
+          <div key={item.q}>
+            <h3>
+              <button
+                type="button"
+                id={buttonId}
+                onClick={() => setOpenIndex(isOpen ? null : i)}
+                aria-expanded={isOpen}
+                aria-controls={panelId}
+                className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left hover:bg-neutral-50 dark:hover:bg-white/5"
+              >
+                <span className="text-sm font-medium">{item.q}</span>
+                <svg
+                  viewBox="0 0 24 24"
+                  className={`h-4 w-4 shrink-0 text-neutral-400 transition-transform duration-300 ${isOpen ? "rotate-180" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  aria-hidden="true"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+            </h3>
+            {/* grid-rows 0fr->1fr animates height without knowing the content's pixel height up
+                front — content stays mounted (not conditionally rendered) so the transition has
+                something to animate between renders. */}
+            <div
+              className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
+                isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+              }`}
+            >
+              <div className="overflow-hidden">
+                <div
+                  id={panelId}
+                  role="region"
+                  aria-labelledby={buttonId}
+                  aria-hidden={!isOpen}
+                  className={`px-4 pt-1 pb-4 text-sm text-neutral-600 dark:text-neutral-400 transition-opacity duration-300 ${
+                    isOpen ? "opacity-100 delay-100" : "opacity-0"
+                  }`}
+                >
+                  {item.a}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 const STACK_CATEGORIES: { key: StackCategory; label: string }[] = [
   { key: "frontend", label: "Frontend" },
@@ -1852,49 +1917,62 @@ export default function Home() {
       </div>
       </main>
 
-      <section id="about" className="mx-auto w-full max-w-2xl px-6 py-24 border-t border-neutral-200 dark:border-neutral-800">
+      <section id="about" className="mx-auto w-full max-w-5xl px-6 sm:px-12 py-24 border-t border-neutral-200 dark:border-neutral-800">
         <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">About</p>
         <h2 className="mt-4 text-2xl sm:text-3xl font-bold tracking-tight">From a blank page to a running project</h2>
         <p className="mt-4 text-neutral-600 dark:text-neutral-400 max-w-prose">
           What To Do? turns a single idea into something you can actually run — no account required to try it.
         </p>
 
-        <ol className="mt-10 space-y-8">
+        <ol className="mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-10 gap-y-10">
           {ABOUT_STEPS.map((step, i) => (
-            <li key={step.title} className="flex gap-4">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-sm font-semibold">
-                {i + 1}
+            <li key={step.title} className="border-t border-neutral-200 dark:border-neutral-800 pt-4">
+              <span className="text-xs font-mono text-neutral-400 dark:text-neutral-600">
+                {String(i + 1).padStart(2, "0")}
               </span>
-              <div>
-                <p className="font-medium">{step.title}</p>
-                <p className="mt-1.5 text-sm text-neutral-600 dark:text-neutral-400">{step.body}</p>
-              </div>
+              <p className="mt-2 font-semibold">{step.title}</p>
+              <p className="mt-1.5 text-sm text-neutral-600 dark:text-neutral-400">{step.body}</p>
             </li>
           ))}
         </ol>
       </section>
 
-      <section id="faq" className="mx-auto w-full max-w-2xl px-6 py-24 border-t border-neutral-200 dark:border-neutral-800">
+      <section id="faq" className="mx-auto w-full max-w-5xl px-6 sm:px-12 py-24 border-t border-neutral-200 dark:border-neutral-800">
         <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">FAQ</p>
-        <h2 className="mt-4 text-2xl sm:text-3xl font-bold tracking-tight">Frequently asked questions</h2>
+        <h2 className="mt-4 text-2xl sm:text-3xl font-bold tracking-tight">Common questions, answered</h2>
 
-        <dl className="mt-10 space-y-8">
-          {FAQ_ITEMS.map((item) => (
-            <div key={item.q}>
-              <dt className="font-medium">{item.q}</dt>
-              <dd className="mt-1.5 text-sm text-neutral-600 dark:text-neutral-400">{item.a}</dd>
-            </div>
-          ))}
-        </dl>
+        <FaqAccordion items={FAQ_ITEMS} />
       </section>
 
-      <footer className="mx-auto w-full max-w-2xl px-6 pt-16 pb-20 border-t border-neutral-200 dark:border-neutral-800">
+      <footer className="mx-auto w-full max-w-5xl px-6 sm:px-12 pt-16 pb-20 border-t border-neutral-200 dark:border-neutral-800">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-10">
           <div>
-            <Image src="/Logo.png" alt="What To Do?" width={96} height={54} className="h-5 w-auto dark:invert" />
+            <p className="text-lg font-bold tracking-tight">What To Do?</p>
             <p className="mt-3 max-w-xs text-sm text-neutral-500 dark:text-neutral-400">
               From an idea to a scoped, scaffolded, running project in one prompt.
             </p>
+            <div className="mt-5 flex items-center gap-5 text-sm">
+              <a
+                href="https://github.com/jabluetooth/what-to-do"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-neutral-400 dark:text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                  <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
+                </svg>
+                GitHub
+              </a>
+              <a
+                href="https://www.filheinzrelatorre.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-neutral-400 dark:text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
+              >
+                <Image src="/bonny-ai.png" alt="" width={32} height={32} className="h-4 w-4 rounded-full object-cover" />
+                Bonny-Ai
+              </a>
+            </div>
           </div>
           <div className="flex gap-10 text-sm">
             <div className="space-y-3">
