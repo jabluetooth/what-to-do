@@ -317,11 +317,11 @@ const ABOUT_STEPS = [
   },
   {
     title: "Get a PRD",
-    body: "A scoped product spec — problem, target user, MVP features — generated in seconds, editable section by section.",
+    body: "A scoped product spec (problem, target user, MVP features) generated in seconds, editable section by section.",
   },
   {
     title: "Pick a tech stack",
-    body: "A curated recommendation, not a black box — override any piece if you already know what you want.",
+    body: "A curated recommendation, not a black box. Override any piece if you already know what you want.",
   },
   {
     title: "Generate boilerplate & preview it live",
@@ -1425,7 +1425,7 @@ export default function Home() {
                       type="button"
                       onClick={() => selectSection(section.key)}
                       aria-pressed={isSelected}
-                      className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold transition-colors ${
+                      className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium transition-colors ${
                         isSelected
                           ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
                           : "hover:bg-neutral-100 dark:hover:bg-white/[0.04]"
@@ -1523,7 +1523,9 @@ export default function Home() {
           <button
             type="button"
             onClick={() => setActiveSlide("stack")}
-            className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium"
+            className={`rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium transition-all duration-300 ease-in-out ${
+              selectedSection ? "sm:ml-0" : "sm:ml-[calc((100%_-_14rem)/2)]"
+            }`}
           >
             Continue to Tech Stack →
           </button>
@@ -1921,7 +1923,7 @@ export default function Home() {
         <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">About</p>
         <h2 className="mt-4 text-2xl sm:text-3xl font-bold tracking-tight">From a blank page to a running project</h2>
         <p className="mt-4 text-neutral-600 dark:text-neutral-400 max-w-prose">
-          What To Do? turns a single idea into something you can actually run — no account required to try it.
+          What To Do? turns a single idea into something you can actually run. No account required to try it.
         </p>
 
         <ol className="mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-10 gap-y-10">
