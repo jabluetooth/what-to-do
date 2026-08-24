@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getGuestSessionIdIfExists, readGuestSession } from "@/lib/redis/guestSession";
 import { readProjectZip } from "@/lib/pipeline/projectFiles";
+import { slugify } from "@/lib/pipeline/slugify";
 
 /**
  * Read-only, so uses getGuestSessionIdIfExists (never creates a session) rather than
@@ -21,10 +22,11 @@ export async function GET() {
     return NextResponse.json({ error: "Boilerplate archive not found." }, { status: 404 });
   }
 
+  const filename = `${slugify(session.prompt ?? "app")}.zip`;
   return new NextResponse(new Uint8Array(zip), {
     headers: {
       "Content-Type": "application/zip",
-      "Content-Disposition": 'attachment; filename="boilerplate.zip"',
+      "Content-Disposition": `attachment; filename="${filename}"`,
     },
   });
 }

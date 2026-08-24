@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { getDb } from "@/lib/db/client";
 import { projects, boilerplateVersions } from "@/lib/db/schema";
 import { readProjectZip } from "@/lib/pipeline/projectFiles";
+import { slugify } from "@/lib/pipeline/slugify";
 
 /**
  * The signed-in equivalent of GET /api/boilerplate/download, which only ever reads the *active
@@ -20,7 +21,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ proj
   const db = getDb();
 
   const [project] = await db
-    .select({ id: projects.id })
+    .select({ id: projects.id, prompt: projects.prompt })
     .from(projects)
     .where(and(eq(projects.id, projectId), eq(projects.userId, session.user.id)))
     .limit(1);
@@ -43,10 +44,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ proj
     return NextResponse.json({ error: "Boilerplate archive not found." }, { status: 404 });
   }
 
+  const filename = `${slugify(project.prompt)}.zip`;
   return new NextResponse(new Uint8Array(zip), {
     headers: {
       "Content-Type": "application/zip",
-      "Content-Disposition": 'attachment; filename="boilerplate.zip"',
+      "Content-Disposition": `attachment; filename="${filename}"`,
     },
   });
 }

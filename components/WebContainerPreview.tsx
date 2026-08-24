@@ -139,30 +139,21 @@ export default function WebContainerPreview({
 
       instance.on("server-ready", (_port, url) => {
         if (cancelledRef.current) return;
-        // "server-ready" only means the dev server *process* started — Next.js compiles routes
-        // on demand, so a syntax/import error in app/page.tsx wouldn't surface until something
-        // actually requests "/". Fetching the root route here first makes the report reflect
-        // what a real request finds, not just "the process launched." The iframe still renders
-        // either way — a failed check doesn't hide it, since Next's own dev error overlay in
-        // that iframe is the most useful thing the user can see.
-        void (async () => {
-          let verified = true;
-          try {
-            const check = await fetch(url);
-            verified = check.ok;
-          } catch {
-            // Inconclusive (proxy/network hiccup, not necessarily a real compile failure) —
-            // don't downgrade the report on this alone; the iframe is the real source of truth.
-          }
-          if (cancelledRef.current) return;
-          setState({ phase: "ready", url });
-          reportValidation(data.prefix, verified);
-          if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-          idleTimerRef.current = setTimeout(() => {
-            void teardownWebContainer();
-            setState({ phase: "timedout" });
-          }, IDLE_TIMEOUT_MS);
-        })();
+        // "server-ready" only means the dev server *process* started — a syntax/import error in
+        // app/page.tsx wouldn't surface until something actually requests "/". A same-page check
+        // via fetch() can't do that: the WebContainer URL is cross-origin, so the browser blocks
+        // reading the response (CORS) regardless of whether the server actually 200'd — the check
+        // was silently useless, always falling into "inconclusive." The iframe below is the only
+        // real source of truth this component has access to (it can navigate cross-origin, just
+        // can't be introspected from here), so this reports "server started" and lets the iframe
+        // show whatever the dev server actually returns, error overlay included.
+        setState({ phase: "ready", url });
+        reportValidation(data.prefix, true);
+        if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = setTimeout(() => {
+          void teardownWebContainer();
+          setState({ phase: "timedout" });
+        }, IDLE_TIMEOUT_MS);
       });
     } catch (err) {
       if (cancelledRef.current) return;

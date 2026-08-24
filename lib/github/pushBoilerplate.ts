@@ -4,6 +4,7 @@ import { users, boilerplateVersions, projects } from "@/lib/db/schema";
 import { getGithubConnection, hasRepoScope } from "@/lib/github/connection";
 import { createRepo, pushFiles, GithubApiError } from "@/lib/github/client";
 import { listProjectFiles } from "@/lib/pipeline/projectFiles";
+import { slugify } from "@/lib/pipeline/slugify";
 
 const MAX_ERROR_CHARS = 500;
 
@@ -39,17 +40,6 @@ export async function getLatestGithubPushResult(userId: string): Promise<LatestG
     .orderBy(desc(boilerplateVersions.createdAt))
     .limit(1);
   return row ?? null;
-}
-
-function slugify(text: string): string {
-  const slug = text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40)
-    // The slice above can land right after a run of hyphens, leaving one dangling — trim again.
-    .replace(/-+$/g, "");
-  return slug || "app";
 }
 
 /**
