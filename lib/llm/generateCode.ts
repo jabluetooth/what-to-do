@@ -21,6 +21,7 @@ export async function generateCodeFile(params: {
 }): Promise<string> {
   const client = getGroq();
   let currentModel = params.model;
+  let currentMaxTokens = params.maxTokens;
   let switchedToFallback = false;
   let lastError: unknown;
 
@@ -28,7 +29,7 @@ export async function generateCodeFile(params: {
     try {
       const response = await client.chat.completions.create({
         model: currentModel,
-        max_tokens: params.maxTokens,
+        max_tokens: currentMaxTokens,
         messages: [
           {
             role: "user",
@@ -37,8 +38,23 @@ export async function generateCodeFile(params: {
         ],
       });
 
-      const text = response.choices[0]?.message?.content ?? "";
+      const choice = response.choices[0];
+      const text = choice?.message?.content ?? "";
       const match = text.match(FENCE_RE);
+
+      // finish_reason "length" (or a fence opened but never closed, as a fallback signal) means
+      // the file was cut off mid-generation -- confirmed live as the cause of a schema.ts with
+      // an unterminated `sql\`...\`` default, since the old code below fell back to returning
+      // this exact truncated, syntactically-broken text as if generation had succeeded.
+      if (choice?.finish_reason === "length" || (!match && /```/.test(text))) {
+        console.warn(
+          `[groq] generateCodeFile attempt ${attempt} (${currentModel}) response truncated (finish_reason=${choice?.finish_reason}), retrying with a larger token budget`
+        );
+        currentMaxTokens *= 2;
+        lastError = new Error("Model response was truncated before the file was complete");
+        continue;
+      }
+
       const code = (match ? match[1] : text).trim();
       if (code) return code;
 
