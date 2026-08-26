@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import Link from "next/link";
-import Image from "next/image";
 import { signIn } from "next-auth/react";
 import type { PlatformHint, PrdSection, RandomIdea, ScopeSizeHint, StackCategory, StackRecommendation } from "@/lib/types";
 import { STACK_ALTERNATIVES } from "@/lib/pipeline/stackMatrix";
 import SiteNav from "@/components/SiteNav";
 import Watermark from "@/components/Watermark";
+import Footer from "@/components/Footer";
 
 const SESSION_POLL_INTERVAL_MS = 30_000;
 const TIMEOUT_WARNING_THRESHOLD_SECONDS = 5 * 60;
@@ -1731,11 +1730,6 @@ export default function Home() {
           {stack && (
             <div className="border-t border-neutral-200 dark:border-neutral-800 pt-6">
               <h2 className="text-xl font-semibold">Boilerplate</h2>
-              {prompt && (
-                <p className="mt-1 truncate text-sm text-neutral-500 dark:text-neutral-400" title={prompt}>
-                  {prompt}
-                </p>
-              )}
 
               {boilerplateStale && boilerplateJobState === "succeeded" && (
                 <div className="mt-2 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
@@ -1749,92 +1743,104 @@ export default function Home() {
                 </p>
               )}
 
-              {boilerplateJobState === "idle" && (
-                <button
-                  type="button"
-                  onClick={generateBoilerplate}
-                  className="mt-3 rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium"
-                >
-                  Generate Boilerplate
-                </button>
-              )}
-
-              {(boilerplateJobState === "pending" || boilerplateJobState === "running") && (
-                <div className="mt-3">
-                  <div className="h-2 w-full rounded-full bg-neutral-200 dark:bg-neutral-800 overflow-hidden">
-                    <div
-                      className="h-full bg-neutral-900 dark:bg-neutral-100 transition-all"
-                      style={{ width: `${boilerplateProgress}%` }}
-                    />
-                  </div>
-                  <p className="mt-2 text-sm" role="status" aria-live="polite">
-                    {boilerplateMessage}
+              {/* Keyed on the collapsed phase (not the raw job state) so pending->running doesn't
+                  restart the slide-in mid-progress-bar — only a genuine phase change (idle ->
+                  generating -> done/failed) re-triggers it, since each of those swaps in visibly
+                  different content that was otherwise just cutting into view with no transition. */}
+              <div key={boilerplateJobActive ? "active" : boilerplateJobState} className="[animation:slide-in-right_0.3s_ease-out]">
+                {prompt && (
+                  <p className="mt-1 truncate text-sm text-neutral-500 dark:text-neutral-400" title={prompt}>
+                    {prompt}
                   </p>
-                </div>
-              )}
+                )}
 
-              {boilerplateJobState === "failed" && (
-                <button
-                  type="button"
-                  onClick={retryBoilerplate}
-                  className="mt-3 rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium"
-                >
-                  Retry
-                </button>
-              )}
+                {boilerplateJobState === "idle" && (
+                  <button
+                    type="button"
+                    onClick={generateBoilerplate}
+                    className="mt-3 rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium"
+                  >
+                    Generate Boilerplate
+                  </button>
+                )}
 
-              {boilerplateJobState === "succeeded" && (
-                <div className="mt-3 flex flex-col gap-1">
-                  <div className="flex items-center gap-3">
-                    <p
-                      className={
-                        boilerplateUnvalidated
-                          ? "text-sm text-amber-700 dark:text-amber-400"
-                          : "text-sm text-green-700 dark:text-green-400"
-                      }
-                    >
-                      {boilerplateUnvalidated
-                        ? "Boilerplate generated — no Python interpreter was available to check it, review before running."
-                        : boilerplateWebContainerCompatible === false
-                          ? "Boilerplate generated (Python syntax checked)."
-                          : boilerplateBuildVerified
-                            ? "Boilerplate generated and verified — Live Preview confirmed it builds and runs."
-                            : "Boilerplate generated (syntax-checked) — open Live Preview to confirm it actually builds and runs."}
+                {boilerplateJobActive && (
+                  <div className="mt-3">
+                    <div className="h-2 w-full rounded-full bg-neutral-200 dark:bg-neutral-800 overflow-hidden">
+                      <div
+                        className="h-full bg-neutral-900 dark:bg-neutral-100 transition-all"
+                        style={{ width: `${boilerplateProgress}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-sm" role="status" aria-live="polite">
+                      {boilerplateMessage}
                     </p>
-                    <a
-                      href="/api/boilerplate/download"
-                      className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium"
-                    >
-                      Download zip
-                    </a>
-                    {boilerplateJobId && (
-                      <a
-                        href={`/preview/${boilerplateJobId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium"
+                  </div>
+                )}
+
+                {boilerplateJobState === "failed" && (
+                  <button
+                    type="button"
+                    onClick={retryBoilerplate}
+                    className="mt-3 rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium"
+                  >
+                    Retry
+                  </button>
+                )}
+
+                {boilerplateJobState === "succeeded" && (
+                  <div className="mt-3 flex flex-col gap-1">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <p
+                        className={
+                          boilerplateUnvalidated
+                            ? "min-w-0 text-sm text-amber-700 dark:text-amber-400"
+                            : "min-w-0 text-sm text-green-700 dark:text-green-400"
+                        }
                       >
-                        {boilerplateWebContainerCompatible === false ? "View files" : "Live Preview"}
+                        {boilerplateUnvalidated
+                          ? "Boilerplate generated — no Python interpreter was available to check it, review before running."
+                          : boilerplateWebContainerCompatible === false
+                            ? "Boilerplate generated (Python syntax checked)."
+                            : boilerplateBuildVerified
+                              ? "Boilerplate generated and verified — Live Preview confirmed it builds and runs."
+                              : "Boilerplate generated (syntax-checked) — open Live Preview to confirm it actually builds and runs."}
+                      </p>
+                      <a
+                        href="/api/boilerplate/download"
+                        className="shrink-0 whitespace-nowrap rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium"
+                      >
+                        Download zip
                       </a>
+                      {boilerplateJobId && (
+                        <a
+                          href={`/preview/${boilerplateJobId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0 whitespace-nowrap rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium"
+                        >
+                          {boilerplateWebContainerCompatible === false ? "View files" : "Live Preview"}
+                        </a>
+                      )}
+                    </div>
+                    {boilerplateWebContainerCompatible === false && (
+                      <p className="text-xs text-neutral-500">
+                        Live preview isn&apos;t available for this stack — download the zip and run it locally (see
+                        the included README for the exact command).
+                      </p>
+                    )}
+                    {boilerplateStale && (
+                      <button
+                        type="button"
+                        onClick={generateBoilerplate}
+                        className="text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:underline"
+                      >
+                        Regenerate
+                      </button>
                     )}
                   </div>
-                  {boilerplateWebContainerCompatible === false && (
-                    <p className="text-xs text-neutral-500">
-                      Live preview isn&apos;t available for this stack — download the zip and run it locally (see
-                      the included README for the exact command).
-                    </p>
-                  )}
-                  {boilerplateStale && (
-                    <button
-                      type="button"
-                      onClick={generateBoilerplate}
-                      className="text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:underline"
-                    >
-                      Regenerate
-                    </button>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
             </div>
@@ -1946,63 +1952,7 @@ export default function Home() {
         <FaqAccordion items={FAQ_ITEMS} />
       </section>
 
-      <footer className="mx-auto w-full max-w-5xl px-6 sm:px-12 pt-16 pb-20 border-t border-neutral-200 dark:border-neutral-800">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-10">
-          <div>
-            <p className="text-lg font-bold tracking-tight">What To Do?</p>
-            <p className="mt-3 max-w-xs text-sm text-neutral-500 dark:text-neutral-400">
-              From an idea to a scoped, scaffolded, running project in one prompt.
-            </p>
-            <div className="mt-5 flex items-center gap-5 text-sm">
-              <a
-                href="https://github.com/jabluetooth/what-to-do"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-neutral-400 dark:text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
-              >
-                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
-                  <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
-                </svg>
-                GitHub
-              </a>
-              <a
-                href="https://www.filheinzrelatorre.com/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-neutral-400 dark:text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
-              >
-                <Image src="/bonny-ai.png" alt="" width={32} height={32} className="h-4 w-4 rounded-full object-cover" />
-                Bonny-Ai
-              </a>
-            </div>
-          </div>
-          <div className="flex gap-10 text-sm">
-            <div className="space-y-3">
-              <a
-                href="#about"
-                className="block text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
-              >
-                About
-              </a>
-              <a
-                href="#faq"
-                className="block text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
-              >
-                FAQ
-              </a>
-            </div>
-            <div className="space-y-3">
-              <Link
-                href="/account"
-                className="block text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
-              >
-                Account
-              </Link>
-            </div>
-          </div>
-        </div>
-        <p className="mt-12 text-xs text-neutral-400 dark:text-neutral-600">© 2026 What To Do?</p>
-      </footer>
+      <Footer />
 
       {showSignInModal && (
         <div
