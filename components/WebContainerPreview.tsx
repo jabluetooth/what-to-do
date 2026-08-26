@@ -129,12 +129,19 @@ export default function WebContainerPreview({
       }
 
       setState({ phase: "starting" });
-      // --webpack forces the fallback bundler instead of the default Turbopack, whose dev
-      // server is a native (non-WASM) binary — WebContainers can only execute JS/WASM, so
-      // Turbopack can't actually run here. Only affects the WebContainer preview's own
-      // invocation, not the template's package.json "dev" script, which still defaults to
-      // Turbopack for anyone who downloads the zip and runs it on a real machine.
-      const dev = await instance.spawn("npm", ["run", "dev", "--", "--webpack"]);
+      // No bundler flag needed: the template is pinned to Next.js 15 (see
+      // templates/nextjs-postgres-drizzle/package.json), whose `next dev` still defaults to
+      // webpack — Turbopack's dev server is a native (non-WASM) binary that WebContainers can't
+      // execute, and Next 15's CLI doesn't even define a `--webpack`/`--turbopack` opt-out for
+      // `dev` the way Next 16 does, so passing one here would hard-fail arg parsing. The Next 16
+      // pin was also dropped for a second reason: its resolveMetadata reads
+      // workAsyncStorage.getStore() *after* an await (upstream bug, still open as of Next
+      // 16.3.2 — https://github.com/vercel/next.js/issues/96261), which loses the AsyncLocalStorage
+      // context on a cold first compile and throws "Invariant: Expected workStore to be
+      // initialized" — reliably, since every WebContainer boot is cold. Next 15's
+      // resolveMetadata takes workStore as a parameter instead of re-fetching it, so the race
+      // can't happen there.
+      const dev = await instance.spawn("npm", ["run", "dev"]);
       void dev.exit;
 
       instance.on("server-ready", (_port, url) => {
