@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 interface FooterLink {
   label: string;
@@ -129,9 +130,12 @@ function InstagramIcon() {
 
 function PortfolioIcon() {
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M3 12h18M12 3c2.4 2.4 3.6 5.4 3.6 9s-1.2 6.6-3.6 9c-2.4-2.4-3.6-5.4-3.6-9s1.2-6.6 3.6-9Z" />
-    </svg>
+    <Image
+      src="/bonny-ai.png"
+      alt=""
+      width={32}
+      height={32}
+      className="h-[18px] w-[18px] rounded-full object-cover"
+    />
   );
 }
