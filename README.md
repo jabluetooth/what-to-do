@@ -12,12 +12,7 @@
 
 <br>
 
-<!-- HERO: short GIF (15-20s) of the full loop - type a one-line app idea, watch the
-     PRD generate, see the stack recommendation with alternatives, then the WebContainer
-     preview booting the generated boilerplate live in-browser. That last step (a real
-     project running before download) is the actual differentiator, so don't cut the
-     clip before it boots. Save as docs/demo.gif, add here as: -->
-<!-- <p align="center"><img src="docs/demo.gif" alt="What To Do demo" width="800"></p> -->
+<p align="center"><img src="docs/demo.gif" alt="What To Do demo" width="800"></p>
 
 Describe an app idea in a sentence and What To Do turns it into a full PRD, a recommended tech stack with reasoned alternatives, and a downloadable boilerplate project scaffolded to match, with a live in-browser preview before you ever download a single file.
 
