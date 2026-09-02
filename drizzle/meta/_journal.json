@@ -22,6 +22,13 @@
       "when": 1786730956421,
       "tag": "0002_absurd_abomination",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788329329168,
+      "tag": "0003_fancy_scarecrow",
+      "breakpoints": true
     }
   ]
 }

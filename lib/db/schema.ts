@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, primaryKey, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, primaryKey, boolean, jsonb, unique } from "drizzle-orm/pg-core";
 import type { AdapterAccountType } from "next-auth/adapters";
 import type { PromptHints, PrdSection, StackRecommendation } from "@/lib/types";
 
@@ -145,3 +145,27 @@ export const boilerplateVersions = pgTable("boilerplate_version", {
   githubPushError: text("githubPushError"),
   createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
 });
+
+/**
+ * Mobile-app favorites (companion Expo app, bearer-auth API under app/api/mobile). Unique on
+ * (userId, title) so re-favoriting the same idea is a no-op conflict handled at the insert site,
+ * not a duplicate row — see app/api/mobile/favorites/route.ts.
+ */
+export const favorites = pgTable(
+  "favorite",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    targetUser: text("targetUser").notNull(),
+    description: text("description").notNull(),
+    /** The RandomIdea's "web"|"mobile" platformTag value (lib/types.ts). */
+    platformTag: text("platformTag").notNull(),
+    createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [unique("favorite_userId_title_unique").on(table.userId, table.title)]
+);
