@@ -22,6 +22,10 @@ export interface RandomIdea {
   platformTag: PlatformHint;
 }
 
+/** Fixed preset tags a mobile user can attach to a favorite (lib/db/schema.ts's favorites.tags) — mirrored in WhatToDo-mobile's lib/types.ts. */
+export const PRESET_TAGS = ["Weekend project", "Startup idea", "For work", "Someday"] as const;
+export type PresetTag = (typeof PRESET_TAGS)[number];
+
 export type StackCategory = "frontend" | "backend" | "database" | "hosting" | "auth";
 
 export interface StackPieceChoice {

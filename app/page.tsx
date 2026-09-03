@@ -793,6 +793,43 @@ export default function Home() {
     await submitPrompt(promptText, { platform: idea.platformTag });
   }
 
+  // Applies a prefilled idea to the same state startPrdFromIdea() reads/sets, wrapped in its own
+  // function (rather than inlined) so the URL-hydration effect below only calls opaque functions
+  // in its body, not setState directly — keeps it clean under react-hooks/set-state-in-effect.
+  function applyIdeaToPromptState(nextIdea: RandomIdea): string {
+    const promptText = `${nextIdea.title} (${nextIdea.targetUser}): ${nextIdea.description}`;
+    setIdea(nextIdea);
+    setPlatform(nextIdea.platformTag);
+    setPrompt(promptText);
+    return promptText;
+  }
+
+  // Mobile app's "Continue building on web" handoff: a favorite's title/targetUser/description/
+  // platformTag arrive as query params (see WhatToDo-mobile's lib/webLink.ts) and auto-start the
+  // PRD flow, exactly as if the user had generated/picked this idea here. Read window.location
+  // directly (rather than useSearchParams) so this stays a plain client-side effect with no
+  // Suspense-boundary requirement. Runs at most once per page load — the ref guards against
+  // StrictMode's double-invoke, and the URL is scrubbed after consuming so a refresh doesn't replay it.
+  const prefillConsumedRef = useRef(false);
+  useEffect(() => {
+    if (prefillConsumedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const title = params.get("title");
+    const targetUser = params.get("targetUser");
+    const description = params.get("description");
+    const platformTag = params.get("platformTag");
+    if (!title || !targetUser || !description || (platformTag !== "web" && platformTag !== "mobile")) return;
+
+    prefillConsumedRef.current = true;
+    // One-time hydration from the URL on mount, not a reactive sync — the ref above already
+    // guards against this ever running more than once, so there's no cascading-render risk.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    const promptText = applyIdeaToPromptState({ title, targetUser, description, platformTag });
+    window.history.replaceState(null, "", window.location.pathname);
+    void submitPrompt(promptText, { platform: platformTag });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time URL consumption on mount, guarded by the ref above
+  }, []);
+
   async function handleClarify(e: React.FormEvent) {
     e.preventDefault();
     if (state.phase !== "clarifying" || !answer.trim()) return;

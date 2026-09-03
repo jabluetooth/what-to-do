@@ -165,6 +165,10 @@ export const favorites = pgTable(
     description: text("description").notNull(),
     /** The RandomIdea's "web"|"mobile" platformTag value (lib/types.ts). */
     platformTag: text("platformTag").notNull(),
+    /** Free-text personal note the mobile user attaches to a favorite — see PRESET_TAGS in lib/types.ts for tags. */
+    notes: text("notes"),
+    /** Preset tag keys (fixed list, validated at the API layer — not a DB enum/join table). */
+    tags: text("tags").array().notNull().default([]),
     createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
   },
   (table) => [unique("favorite_userId_title_unique").on(table.userId, table.title)]

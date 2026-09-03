@@ -4,6 +4,12 @@ import { getRecentIdeaTitles, pushRecentIdeaTitle } from "@/lib/redis/recentIdea
 import { enforceGenerationCap, RateLimitExceededError } from "@/lib/redis/rateLimit";
 import { generateRandomIdea } from "@/lib/llm/ideas";
 import { moderateInput } from "@/lib/llm/moderation";
+import type { PlatformHint } from "@/lib/types";
+
+function parsePlatformHint(request: Request): PlatformHint | undefined {
+  const raw = new URL(request.url).searchParams.get("platform");
+  return raw === "web" || raw === "mobile" ? raw : undefined;
+}
 
 /**
  * Mobile equivalent of app/api/ideas/random/route.ts's POST — same generate -> moderate ->
@@ -25,10 +31,11 @@ export async function GET(request: Request) {
   }
 
   const recentTitles = await getRecentIdeaTitles(sessionId);
+  const platformHint = parsePlatformHint(request);
 
   let idea;
   try {
-    idea = await generateRandomIdea(recentTitles);
+    idea = await generateRandomIdea(recentTitles, platformHint);
   } catch {
     return NextResponse.json(
       { error: "Couldn't generate an idea right now. Please try again in a moment." },
