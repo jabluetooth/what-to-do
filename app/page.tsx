@@ -54,6 +54,24 @@ function scrambleLike(text: string, minLength: number): string {
   return out;
 }
 
+/** TextScramble's character shuffle is a JS rAF/setInterval loop, not a CSS animation, so
+ *  globals.css's `prefers-reduced-motion` kill-switch (which only touches CSS transitions/
+ *  animations) can't reach it — it checks the media query itself instead. */
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    // One-time sync from a browser-only API that can't be read during SSR (no window) or as lazy
+    // useState init for the same reason — the change listener below handles every update after.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setReduced(query.matches);
+    const handleChange = () => setReduced(query.matches);
+    query.addEventListener("change", handleChange);
+    return () => query.removeEventListener("change", handleChange);
+  }, []);
+  return reduced;
+}
+
 /**
  * Two phases, one persistent component (it must never unmount between them — an earlier version
  * swapped between a plain <span> and this component depending on `loading`, which remounted it
@@ -93,9 +111,16 @@ function TextScramble({
   const [display, setDisplay] = useState(text);
   const frameRef = useRef<number | null>(null);
   const lastPlayRef = useRef(play);
+  const reducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     if (!loading) return;
+    if (reducedMotion) {
+      // Reduced motion means no continuous shuffle — show the real text and skip the loop below.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDisplay(text);
+      return;
+    }
     const update = () => setDisplay(scrambleLike(text, MIN_LOADING_SCRAMBLE_LENGTH));
     // setInterval's first tick only fires after a full LOADING_SCRAMBLE_INTERVAL_MS, which left
     // the previous (stale) text visibly sitting there for a beat right after the button is
@@ -106,10 +131,17 @@ function TextScramble({
       cancelAnimationFrame(frame);
       clearInterval(id);
     };
-  }, [loading, text]);
+  }, [loading, reducedMotion, text]);
 
   useEffect(() => {
     if (loading) return;
+    if (reducedMotion) {
+      lastPlayRef.current = play;
+      // Reduced motion means no left-to-right reveal sweep — jump straight to the final text.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDisplay(text);
+      return;
+    }
     if (play === lastPlayRef.current) {
       setDisplay(text);
       return;
@@ -147,7 +179,7 @@ function TextScramble({
     return () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
     };
-  }, [loading, play, text]);
+  }, [loading, play, reducedMotion, text]);
 
   return (
     <span className={className}>

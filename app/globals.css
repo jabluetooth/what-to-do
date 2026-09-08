@@ -113,3 +113,18 @@ button:disabled {
 .dark .themed-scrollbar::-webkit-scrollbar-thumb {
   background-color: rgb(64 64 64);
 }
+
+/* Collapses every CSS transition/animation (hero<->result slide, FAQ accordion grid-rows, chevron
+   rotate, loading dots, sheet slide-ins) to effectively instant for visitors who've asked the OS
+   to reduce motion. TextScramble's character shuffle is JS-driven (rAF/setInterval), not CSS, so
+   it checks prefers-reduced-motion itself (see app/page.tsx) — this rule can't reach it. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
