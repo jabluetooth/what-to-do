@@ -7,6 +7,7 @@ import { STACK_ALTERNATIVES } from "@/lib/pipeline/stackMatrix";
 import SiteNav from "@/components/SiteNav";
 import Watermark from "@/components/Watermark";
 import Footer from "@/components/Footer";
+import { useModalDialog } from "@/lib/useModalDialog";
 
 const SESSION_POLL_INTERVAL_MS = 30_000;
 const TIMEOUT_WARNING_THRESHOLD_SECONDS = 5 * 60;
@@ -680,32 +681,9 @@ export default function Home() {
     return () => clearTimeout(id);
   }, []);
 
-  useEffect(() => {
-    if (!showSignInModal) return;
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setShowSignInModal(false);
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showSignInModal]);
-
-  useEffect(() => {
-    if (!showManualForm) return;
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setShowManualForm(false);
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showManualForm]);
-
-  useEffect(() => {
-    if (!showExitConfirm) return;
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setShowExitConfirm(false);
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showExitConfirm]);
+  const signInModalRef = useModalDialog(showSignInModal, () => setShowSignInModal(false));
+  const manualFormRef = useModalDialog(showManualForm, () => setShowManualForm(false));
+  const exitConfirmRef = useModalDialog(showExitConfirm, () => setShowExitConfirm(false));
 
   useEffect(() => {
     if (isPostPrd) {
@@ -1999,10 +1977,12 @@ export default function Home() {
           }}
         >
           <div
+            ref={signInModalRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="sign-in-modal-title"
-            className="w-full max-w-sm rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl"
+            tabIndex={-1}
+            className="w-full max-w-sm rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl outline-none"
           >
             <div className="flex items-start justify-between gap-4">
               <h2 id="sign-in-modal-title" className="text-lg font-semibold">
@@ -2054,10 +2034,12 @@ export default function Home() {
           }}
         >
           <div
+            ref={exitConfirmRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="exit-confirm-title"
-            className="w-full max-w-sm rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl"
+            tabIndex={-1}
+            className="w-full max-w-sm rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl outline-none"
           >
             <div className="flex items-start justify-between gap-4">
               <h2 id="exit-confirm-title" className="text-lg font-semibold">
@@ -2123,10 +2105,12 @@ export default function Home() {
           }}
         >
           <div
+            ref={manualFormRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="manual-form-title"
-            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl [animation:slide-up-sheet_0.3s_ease-out]"
+            tabIndex={-1}
+            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl outline-none [animation:slide-up-sheet_0.3s_ease-out]"
           >
             <div className="relative">
               <h2 id="manual-form-title" className="text-center text-lg font-semibold">

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { signIn, signOut } from "next-auth/react";
+import { useModalDialog } from "@/lib/useModalDialog";
 
 /** Mirrors GET /api/account/status. Duplicated from app/page.tsx's own copy rather than shared
  *  — this nav (and the Account modal it owns) is meant to be a fully self-contained widget any
@@ -55,14 +56,7 @@ export default function SiteNav({ onSignInClick }: SiteNavProps) {
     };
   }, []);
 
-  useEffect(() => {
-    if (!showAccountModal) return;
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setShowAccountModal(false);
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showAccountModal]);
+  const accountModalRef = useModalDialog(showAccountModal, () => setShowAccountModal(false));
 
   async function openAccountModal() {
     setShowAccountModal(true);
@@ -185,10 +179,12 @@ export default function SiteNav({ onSignInClick }: SiteNavProps) {
           }}
         >
           <div
+            ref={accountModalRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="account-modal-title"
-            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl"
+            tabIndex={-1}
+            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl outline-none"
           >
             <div className="flex items-start justify-between gap-4">
               <h2 id="account-modal-title" className="text-lg font-semibold">
