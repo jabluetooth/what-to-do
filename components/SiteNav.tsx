@@ -128,6 +128,12 @@ export default function SiteNav({ onSignInClick }: SiteNavProps) {
               About
             </Link>
             <Link
+              href="/#cli"
+              className={`rounded-full px-3.5 py-2 text-sm font-medium transition-colors ${inactivePillClass}`}
+            >
+              CLI
+            </Link>
+            <Link
               href="/#faq"
               className={`rounded-full px-3.5 py-2 text-sm font-medium transition-colors ${inactivePillClass}`}
             >

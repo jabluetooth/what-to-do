@@ -10,6 +10,7 @@ interface FooterLink {
 const SITE_LINKS: FooterLink[] = [
   { label: "Home", href: "/" },
   { label: "About", href: "/#about" },
+  { label: "CLI", href: "/#cli" },
   { label: "FAQ", href: "/#faq" },
 ];
 

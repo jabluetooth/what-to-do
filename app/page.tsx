@@ -6,6 +6,8 @@ import type { PlatformHint, PrdSection, RandomIdea, ScopeSizeHint, StackCategory
 import { STACK_ALTERNATIVES } from "@/lib/pipeline/stackMatrix";
 import SiteNav from "@/components/SiteNav";
 import Watermark from "@/components/Watermark";
+import CliSection from "@/components/CliSection";
+import CapabilitiesSection from "@/components/CapabilitiesSection";
 import Footer from "@/components/Footer";
 import { useModalDialog } from "@/lib/useModalDialog";
 
@@ -1991,6 +1993,10 @@ export default function Home() {
           ))}
         </ol>
       </section>
+
+      <CliSection />
+
+      <CapabilitiesSection />
 
       <section id="faq" className="mx-auto w-full max-w-5xl px-6 sm:px-12 py-24 border-t border-neutral-200 dark:border-neutral-800">
         <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">FAQ</p>
