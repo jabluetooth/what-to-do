@@ -73,16 +73,16 @@ export async function POST(request: Request) {
 async function generateHomePage(input: { prompt: string; sections: PrdSection[] }): Promise<string> {
   const example = `export default function Home() {
   return (
-    <main>
-      <section>
-        <h1>Trail Finder</h1>
-        <p>Discover and rate hiking trails near you.</p>
+    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-12 px-6 py-16">
+      <section className="flex flex-col gap-4 text-center">
+        <h1 className="text-4xl font-bold tracking-tight text-gray-900">Trail Finder</h1>
+        <p className="text-lg text-gray-600">Discover and rate hiking trails near you.</p>
       </section>
-      <section>
-        <h2>Features</h2>
-        <ul>
-          <li>Browse trails by difficulty and distance</li>
-          <li>Rate and review trails you've hiked</li>
+      <section className="flex flex-col gap-3">
+        <h2 className="text-2xl font-semibold text-gray-900">Features</h2>
+        <ul className="flex flex-col gap-2">
+          <li className="rounded-lg border border-gray-200 p-4 text-gray-700">Browse trails by difficulty and distance</li>
+          <li className="rounded-lg border border-gray-200 p-4 text-gray-700">Rate and review trails you've hiked</li>
         </ul>
       </section>
     </main>
@@ -91,8 +91,8 @@ async function generateHomePage(input: { prompt: string; sections: PrdSection[] 
 
   return generateCodeFile({
     model: MODEL_QUALITY,
-    maxTokens: 600,
-    instructions: `${baseContext(input.prompt, input.sections)}\n\nWrite app/page.tsx as a real React Server Component with static, app-specific content — a hero section and a short feature summary reflecting this exact app idea, not generic placeholder text — following this exact pattern (adapt headings/content to the app, keep the same import style): no imports at all, not even from 'react' — JSX is compiled automatically by this project's build setup, and importing 'react', 'react/jsx-runtime', or named exports like 'jsx'/'Fragment' from either is both unnecessary and wrong here. Do not import or call the database.\n\n${example}`,
+    maxTokens: 700,
+    instructions: `${baseContext(input.prompt, input.sections)}\n\nWrite app/page.tsx as a real React Server Component with static, app-specific content — a hero section and a short feature summary reflecting this exact app idea, not generic placeholder text — following this exact pattern (adapt headings/content to the app, keep the same import style): no imports at all, not even from 'react' — JSX is compiled automatically by this project's build setup, and importing 'react', 'react/jsx-runtime', or named exports like 'jsx'/'Fragment' from either is both unnecessary and wrong here. Do not import or call the database.\n\nTailwind CSS v4 is already configured in this project (globals.css imports it directly) — use Tailwind utility classes on every element, exactly as densely as the pattern below, so the page renders as a real styled layout (spacing, typography, color, rounded borders) instead of unstyled semantic HTML. Do not omit className attributes.\n\n${example}`,
   });
 }
 
