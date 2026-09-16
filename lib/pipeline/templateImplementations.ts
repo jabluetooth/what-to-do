@@ -2,6 +2,7 @@ import type { TemplateFile } from "@/lib/pipeline/template";
 import type { PrdSection } from "@/lib/types";
 import { generateBoilerplateFillIn } from "@/lib/llm/boilerplate";
 import { generateFastapiFillIn } from "@/lib/llm/boilerplateFastapi";
+import { buildGeneratedReadme } from "@/lib/pipeline/generatedReadme";
 import { validateFastapiBoilerplate, type ValidationResult } from "@/lib/sandbox/validate";
 import { validateTypeScriptSyntax } from "@/lib/sandbox/validateSyntax";
 
@@ -50,6 +51,27 @@ const IMPLEMENTATIONS: Record<string, TemplateImplementation> = {
       const pageFile = files.find((f) => f.path === "app/page.tsx");
       if (pageFile) pageFile.content = fillIn.homePageFileContent;
       files.push({ path: `app/api/${fillIn.mainResourceName}/route.ts`, content: fillIn.mainRouteFileContent });
+
+      const readmeFile = files.find((f) => f.path === "README.md");
+      if (readmeFile) {
+        readmeFile.content = buildGeneratedReadme({
+          prompt: input.prompt,
+          sections: input.sections,
+          mainResourceName: fillIn.mainResourceName,
+          whatsHereLines: [
+            `\`app/page.tsx\` — a working ${fillIn.mainResourceName} list + add form, wired to the API route below`,
+            `\`app/api/${fillIn.mainResourceName}/route.ts\` — GET (list) / POST (create) for ${fillIn.mainResourceName}`,
+            `\`lib/db/schema.ts\` — the ${fillIn.mainResourceName} table`,
+          ],
+          setupSteps: [
+            "1. `npm install`",
+            "2. Copy `.env.example` to `.env` and set `DATABASE_URL` to a Postgres connection string.",
+            "3. `npm run db:push` to create the schema.",
+            "4. `npm run dev` and open http://localhost:3000.",
+          ].join("\n"),
+        });
+      }
+
       return files;
     },
     validate: validateTypeScriptSyntax,
@@ -65,6 +87,36 @@ const IMPLEMENTATIONS: Record<string, TemplateImplementation> = {
       if (modelsFile) modelsFile.content = fillIn.modelsFileContent;
       const mainFile = files.find((f) => f.path === "main.py");
       if (mainFile) mainFile.content = fillIn.mainFileContent;
+
+      const readmeFile = files.find((f) => f.path === "README.md");
+      if (readmeFile) {
+        readmeFile.content = buildGeneratedReadme({
+          prompt: input.prompt,
+          sections: input.sections,
+          mainResourceName: fillIn.mainResourceName,
+          whatsHereLines: [
+            `\`main.py\` — FastAPI app plus GET/POST routes for ${fillIn.mainResourceName} (also doubles as the homepage at \`/\` and the interactive docs at \`/docs\`)`,
+            `\`models.py\` — the ${fillIn.mainResourceName} SQLAlchemy model`,
+          ],
+          setupSteps: [
+            "1. Create a virtual environment and install dependencies:",
+            "   ```",
+            "   python -m venv venv",
+            "   source venv/bin/activate   # Windows: venv\\Scripts\\activate",
+            "   pip install -r requirements.txt",
+            "   ```",
+            "2. Copy `.env.example` to `.env` and set `DATABASE_URL` to a Postgres connection string.",
+            "3. Run the dev server:",
+            "   ```",
+            "   uvicorn main:app --reload",
+            "   ```",
+            "4. Open http://localhost:8000/docs for interactive API docs.",
+          ].join("\n"),
+          extraNote:
+            "## Note on validation\n\nThis boilerplate was checked for valid Python syntax before delivery, not run end-to-end (unlike the Next.js template, which gets a real install + build check). Review `main.py` and `models.py` before relying on it.",
+        });
+      }
+
       return files;
     },
     validate: validateFastapiBoilerplate,
