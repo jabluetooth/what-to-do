@@ -3,6 +3,7 @@
 **From an idea to a scoped, scaffolded, running project in one prompt.**
 
 [![Live](https://img.shields.io/badge/Live_Demo-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://whattodoby.filheinzrelatorre.com)
+[![npm](https://img.shields.io/npm/v/create-whattodo?style=for-the-badge&logo=npm&logoColor=white&label=create-whattodo&color=CB3837)](https://www.npmjs.com/package/create-whattodo)
 
 ![Next.js](https://img.shields.io/badge/Next.js-black?style=for-the-badge&logo=next.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
@@ -26,7 +27,7 @@ Describe an app idea in a sentence and What To Do turns it into a full PRD, a re
 
 1. **Idea to PRD** - a short prompt is expanded into a structured product-requirements document (problem, scope, sections, edge cases) via Groq.
 2. **PRD to stack recommendation** - the PRD is matched against a stack matrix (framework, database, auth, hosting) with a primary pick plus alternatives and the reasoning behind each.
-3. **Stack to boilerplate** - a real, runnable project is generated from a registry of templates (currently Next.js + Postgres + Drizzle, FastAPI + Postgres) and zipped for download.
+3. **Stack to boilerplate** - a real, runnable project is generated from a registry of templates (currently Next.js + Postgres + Drizzle, FastAPI + Postgres): a schema-aware homepage that actually fetches and posts to its own generated API route, not a static placeholder next to a disconnected backend, then zipped for download.
 4. **Live verification** - the generated project boots in-browser via WebContainer before download, so what you get is a project that's already been proven to run, not just a set of files that should.
 
 ## Tech stack
@@ -42,6 +43,7 @@ Describe an app idea in a sentence and What To Do turns it into a full PRD, a re
 | Jobs / caching | Upstash QStash + Redis |
 | Validation | Zod |
 | Styling | Tailwind CSS v4 |
+| CLI | [`create-whattodo`](https://www.npmjs.com/package/create-whattodo) — plain Node, zero UI dependencies, `jszip` for extraction |
 
 ## Local setup
 
