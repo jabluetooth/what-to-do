@@ -70,40 +70,102 @@ export async function POST(request: Request) {
   });
 }
 
-async function generateHomePage(input: { prompt: string; sections: PrdSection[] }): Promise<string> {
-  const example = `export default function Home() {
+async function generateHomePage(input: {
+  prompt: string;
+  sections: PrdSection[];
+  mainResourceName: string;
+  schemaFileContent: string;
+}): Promise<string> {
+  const example = `"use client";
+
+import { useEffect, useState, type FormEvent } from "react";
+
+interface Trail {
+  id: number;
+  name: string;
+  description: string | null;
+  rating: number | null;
+}
+
+export default function Home() {
+  const [trails, setTrails] = useState<Trail[]>([]);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+
+  useEffect(() => {
+    fetch("/api/trails")
+      .then((res) => res.json())
+      .then(setTrails);
+  }, []);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const res = await fetch("/api/trails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, description }),
+    });
+    const created = await res.json();
+    setTrails((prev) => [...prev, created]);
+    setName("");
+    setDescription("");
+  }
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-12 px-6 py-16">
-      <section className="flex flex-col gap-4 text-center">
+    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-10 px-6 py-16">
+      <section className="text-center">
         <h1 className="text-4xl font-bold tracking-tight text-gray-900">Trail Finder</h1>
-        <p className="text-lg text-gray-600">Discover and rate hiking trails near you.</p>
+        <p className="mt-2 text-lg text-gray-600">Discover and rate hiking trails near you.</p>
       </section>
-      <section className="flex flex-col gap-3">
-        <h2 className="text-2xl font-semibold text-gray-900">Features</h2>
-        <ul className="flex flex-col gap-2">
-          <li className="rounded-lg border border-gray-200 p-4 text-gray-700">Browse trails by difficulty and distance</li>
-          <li className="rounded-lg border border-gray-200 p-4 text-gray-700">Rate and review trails you've hiked</li>
-        </ul>
-      </section>
+
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3 rounded-lg border border-gray-200 p-4">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Trail name"
+          className="rounded border border-gray-300 px-3 py-2"
+          required
+        />
+        <input
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Description"
+          className="rounded border border-gray-300 px-3 py-2"
+        />
+        <button type="submit" className="rounded bg-gray-900 px-4 py-2 font-medium text-white">
+          Add trail
+        </button>
+      </form>
+
+      <ul className="flex flex-col gap-2">
+        {trails.map((trail) => (
+          <li key={trail.id} className="rounded-lg border border-gray-200 p-4">
+            <p className="font-semibold text-gray-900">{trail.name}</p>
+            <p className="text-gray-600">{trail.description}</p>
+          </li>
+        ))}
+      </ul>
     </main>
   );
 }`;
 
   return generateCodeFile({
     model: MODEL_QUALITY,
-    maxTokens: 700,
-    instructions: `${baseContext(input.prompt, input.sections)}\n\nWrite app/page.tsx as a real React Server Component with static, app-specific content — a hero section and a short feature summary reflecting this exact app idea, not generic placeholder text — following this exact pattern (adapt headings/content to the app, keep the same import style): no imports at all, not even from 'react' — JSX is compiled automatically by this project's build setup, and importing 'react', 'react/jsx-runtime', or named exports like 'jsx'/'Fragment' from either is both unnecessary and wrong here. Do not import or call the database.\n\nTailwind CSS v4 is already configured in this project (globals.css imports it directly) — use Tailwind utility classes on every element, exactly as densely as the pattern below, so the page renders as a real styled layout (spacing, typography, color, rounded borders) instead of unstyled semantic HTML. Do not omit className attributes.\n\n${example}`,
+    maxTokens: 1100,
+    instructions: `${baseContext(input.prompt, input.sections)}\n\nThis is the schema already defined in lib/db/schema.ts for the "${input.mainResourceName}" resource:\n\n${input.schemaFileContent}\n\nWrite app/page.tsx as a real, interactive client component wired to the already-generated app/api/${input.mainResourceName}/route.ts — not a static brochure page. Following this exact pattern (adapt headings, the resource's actual column names, and the endpoint path to match): start with "use client", fetch the list from /api/${input.mainResourceName} on mount and render each item using the schema's real columns (never invent fields that aren't in the schema above), include a form with one input per writable column (skip id/createdAt/any computed column) that POSTs a new item and appends it to the list on success, and open with a one-line heading/subheading reflecting this specific app idea. Keep the same import style: react hooks imported explicitly from 'react' (JSX itself needs no import). Do not import or call the database directly — only fetch() the API route.\n\nTailwind CSS v4 is already configured in this project (globals.css imports it directly) — use Tailwind utility classes on every element, exactly as densely as the pattern below, so the page renders as a real styled layout instead of unstyled semantic HTML. Do not omit className attributes.\n\n${example}`,
   });
 }
 
 /**
- * v1 scope: fills in one representative slice of the app (schema + one API route + homepage),
- * not the entire application — matches PRD §6.4. Resource naming uses tool-calling (short,
- * simple, escape-free); the three code files use generateCodeFile's plain-text-plus-fence
- * approach instead — see that module for why. The route call is given the already-generated
- * schema as context so they agree with each other (same table binding, same columns). Schema
- * and homepage don't depend on each other and run in parallel; the route call needs the
- * schema's content first.
+ * v1 scope: fills in one representative slice of the app (schema + one API route + a homepage
+ * wired to that route), not the entire application — matches PRD §6.4. Resource naming uses
+ * tool-calling (short, simple, escape-free); the three code files use generateCodeFile's
+ * plain-text-plus-fence approach instead — see that module for why. Both the route and the
+ * homepage are given the already-generated schema as context so all three agree with each
+ * other (same table binding, same columns, same endpoint) — the homepage renders and posts to
+ * the exact resource the route actually serves, instead of being a disconnected static page.
+ * Schema must therefore run first; route and homepage don't depend on each other and run in
+ * parallel once it's done.
  *
  * None of the four calls below pass a fallbackModel (PRD §7): boilerplate generation is the
  * one stage required to fail fast on rate-limit rather than transparently degrade to the
@@ -117,13 +179,12 @@ export async function generateBoilerplateFillIn(input: {
   sections: PrdSection[];
 }): Promise<BoilerplateFillIn> {
   const mainResourceName = await pickResourceName(input);
+  const schemaFileContent = await generateSchema({ ...input, mainResourceName });
 
-  const [schemaFileContent, homePageFileContent] = await Promise.all([
-    generateSchema({ ...input, mainResourceName }),
-    generateHomePage(input),
+  const [mainRouteFileContent, homePageFileContent] = await Promise.all([
+    generateRoute({ ...input, mainResourceName, schemaFileContent }),
+    generateHomePage({ ...input, mainResourceName, schemaFileContent }),
   ]);
-
-  const mainRouteFileContent = await generateRoute({ ...input, mainResourceName, schemaFileContent });
 
   return { mainResourceName, schemaFileContent, mainRouteFileContent, homePageFileContent };
 }

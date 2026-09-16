@@ -80,9 +80,9 @@ export async function generatePrd(input: GeneratePrdInput): Promise<GeneratePrdR
   const raw = await callGroqTool({
     model: MODEL_QUALITY,
     fallbackModel: MODEL_FAST,
-    maxTokens: 2000,
+    maxTokens: 3000,
     tool: PRD_TOOL,
-    userContent: `Generate a concise, MVP-scoped PRD for a developer app idea. Write for a solo developer deciding what to build next, not a corporate audience. Keep each section to a few sentences or a short bullet list — this feeds a scaffolding pipeline, not a formal document. Plain text only: no markdown (no #/## headers, no **bold**, no _italics_); for lists use a plain "- " prefix per line, nothing else.\n\n${contextLines.join("\n")}\n\nEmit exactly these sections, in this order: ${PRD_SECTION_DEFS.map((s) => `${s.key} (${s.title})`).join(", ")}.`,
+    userContent: `Generate an MVP-scoped PRD for a developer app idea, specific enough to actually scope and scaffold a project from — not generic filler that could apply to any app. Write for a solo developer deciding what to build next, not a corporate audience. Plain text only: no markdown (no #/## headers, no **bold**, no _italics_); for lists use a plain "- " prefix per line, nothing else.\n\nPer section:\n- problem_statement: 2-4 sentences naming a concrete, specific pain point this exact idea addresses.\n- target_user: 1-2 concrete user segments (not "everyone" or "users") — who specifically has this problem.\n- core_features: 4-6 bullet points, each one specific, buildable feature unique to this idea (not generic CRUD/auth/login boilerplate unless the idea is actually about that).\n- user_stories: 3-5 bullets, each in the exact form "As a [user], I want [goal], so that [benefit]," tied to features listed above.\n- out_of_scope: 3-5 bullet points of specific features explicitly deferred past MVP, so scope stays realistic.\n- complexity_estimate: 1-2 sentences — a rough weekend/days/weeks estimate with the reason.\n\n${contextLines.join("\n")}\n\nEmit exactly these sections, in this order: ${PRD_SECTION_DEFS.map((s) => `${s.key} (${s.title})`).join(", ")}.`,
     schema: PrdToolOutputSchema,
   });
 
