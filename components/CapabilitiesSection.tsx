@@ -1,3 +1,7 @@
+"use client";
+
+import { useRevealOnScroll } from "@/lib/useRevealOnScroll";
+
 /**
  * Plain feature checklist, no marketing copy — mirrors floe.one's capabilities grid (short
  * headline + one line, whitespace and a border-t divider doing the separating instead of cards).
@@ -31,6 +35,8 @@ const CAPABILITIES = [
 ];
 
 export default function CapabilitiesSection() {
+  const { ref: gridRef, visible } = useRevealOnScroll<HTMLUListElement>();
+
   return (
     <section
       id="capabilities"
@@ -41,9 +47,15 @@ export default function CapabilitiesSection() {
       </p>
       <h2 className="mt-4 text-2xl sm:text-3xl font-bold tracking-tight">What&apos;s actually true, not just promised</h2>
 
-      <ul className="mt-12 grid grid-cols-1 gap-x-10 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
-        {CAPABILITIES.map((item) => (
-          <li key={item.title} className="border-t border-neutral-200 dark:border-neutral-800 pt-4">
+      <ul ref={gridRef} className="mt-12 grid grid-cols-1 gap-x-10 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
+        {CAPABILITIES.map((item, index) => (
+          <li
+            key={item.title}
+            className={`border-t border-neutral-200 dark:border-neutral-800 pt-4 ${
+              visible ? "[animation:fade-in-up_0.4s_ease-out_backwards]" : ""
+            }`}
+            style={visible ? { animationDelay: `${index * 70}ms` } : undefined}
+          >
             <p className="font-semibold">{item.title}</p>
             <p className="mt-1.5 text-sm text-neutral-600 dark:text-neutral-400">{item.body}</p>
           </li>

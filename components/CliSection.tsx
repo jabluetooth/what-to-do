@@ -1,3 +1,7 @@
+"use client";
+
+import { useRevealOnScroll } from "@/lib/useRevealOnScroll";
+
 /**
  * Presents the create-whattodo CLI (packages/create-whattodo) the same way floe.one presents its
  * own CLI: a plain terminal transcript next to a short "why" list, no separate hero of its own.
@@ -57,6 +61,8 @@ function lineClassName(tone?: TerminalLine["tone"]): string {
 }
 
 export default function CliSection() {
+  const { ref: terminalRef, visible: terminalVisible } = useRevealOnScroll<HTMLDivElement>();
+
   return (
     <section
       id="cli"
@@ -95,7 +101,12 @@ export default function CliSection() {
           </a>
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950">
+        <div
+          ref={terminalRef}
+          className={`overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 ${
+            terminalVisible ? "[animation:fade-in-up_0.5s_ease-out_backwards]" : ""
+          }`}
+        >
           <div className="border-b border-neutral-800 px-4 py-2.5">
             <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-500">Terminal</span>
           </div>
