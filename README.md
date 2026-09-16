@@ -20,6 +20,8 @@ Describe an app idea in a sentence and What To Do turns it into a full PRD, a re
 
 **Live:** [whattodoby.filheinzrelatorre.com](https://whattodoby.filheinzrelatorre.com) - no account needed to generate a PRD and preview a boilerplate; sign in to save projects.
 
+**CLI:** `npx create-whattodo "your idea"` scaffolds the generated project straight onto your machine, no browser needed — see [`packages/create-whattodo`](packages/create-whattodo).
+
 ## How it works
 
 1. **Idea to PRD** - a short prompt is expanded into a structured product-requirements document (problem, scope, sections, edge cases) via Groq.

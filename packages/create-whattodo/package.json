@@ -1,0 +1,31 @@
+{
+  "name": "create-whattodo",
+  "version": "0.1.1",
+  "description": "Scaffold a real, boot-tested project from a one-sentence idea, powered by What To Do.",
+  "type": "module",
+  "bin": {
+    "create-whattodo": "bin/cli.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "license": "MIT",
+  "keywords": [
+    "create-app",
+    "scaffold",
+    "boilerplate",
+    "cli"
+  ],
+  "homepage": "https://whattodoby.filheinzrelatorre.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jabluetooth/what-to-do.git",
+    "directory": "packages/create-whattodo"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1"
+  }
+}
