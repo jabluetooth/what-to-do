@@ -1,45 +1,13 @@
-"use client";
-
-import { useRevealOnScroll } from "@/lib/useRevealOnScroll";
+import CliTerminalDemo from "@/components/CliTerminalDemo";
 
 /**
  * Presents the create-whattodo CLI (packages/create-whattodo) the same way floe.one presents its
- * own CLI: a plain terminal transcript next to a short "why" list, no separate hero of its own.
+ * own CLI: a live-feeling terminal demo next to a short "why" list, no separate hero of its own.
  * Deliberately monochrome, matching this app's forced-dark, zero-accent-color palette (see
- * Footer.tsx's own comment on that) — the transcript uses the CLI's real ▸/✔ symbols but weight/
+ * Footer.tsx's own comment on that) — CliTerminalDemo uses the CLI's real ▸/✔ symbols but weight/
  * opacity instead of the CLI's actual ANSI colors, since this site never introduces color anywhere
  * else either.
  */
-
-interface TerminalLine {
-  text: string;
-  tone?: "command" | "success" | "muted";
-}
-
-const TERMINAL_LINES: TerminalLine[] = [
-  { text: '$ npx create-whattodo "a tool that tracks my reading list"', tone: "command" },
-  { text: "" },
-  { text: "create-whattodo — idea → PRD → stack → running project", tone: "muted" },
-  { text: "" },
-  { text: "▸ Generating your PRD..." },
-  { text: "✔ PRD ready.", tone: "success" },
-  { text: "" },
-  { text: "▸ Choosing a stack..." },
-  { text: "  Recommended stack", tone: "muted" },
-  { text: "  frontend    Next.js", tone: "muted" },
-  { text: "  backend     Next.js API Routes", tone: "muted" },
-  { text: "  database    PostgreSQL (Neon)", tone: "muted" },
-  { text: "" },
-  { text: "▸ Generating your boilerplate (this can take a minute or two)..." },
-  { text: "  ✔ Done", tone: "success" },
-  { text: "" },
-  { text: "✔ Done — your project is ready in ./reading-list-tracker", tone: "success" },
-  { text: "" },
-  { text: "Next steps:", tone: "muted" },
-  { text: "  cd reading-list-tracker", tone: "muted" },
-  { text: "  npm install", tone: "muted" },
-  { text: "  npm run dev", tone: "muted" },
-];
 
 const WHY_ITEMS = [
   "No install step — npx fetches and runs it on demand, same as create-next-app.",
@@ -47,22 +15,7 @@ const WHY_ITEMS = [
   "Works anywhere a terminal does — scripts, CI, or just faster than a browser.",
 ];
 
-function lineClassName(tone?: TerminalLine["tone"]): string {
-  switch (tone) {
-    case "command":
-      return "text-neutral-100 font-medium";
-    case "success":
-      return "text-neutral-100";
-    case "muted":
-      return "text-neutral-500";
-    default:
-      return "text-neutral-300";
-  }
-}
-
 export default function CliSection() {
-  const { ref: terminalRef, visible: terminalVisible } = useRevealOnScroll<HTMLDivElement>();
-
   return (
     <section
       id="cli"
@@ -101,23 +54,7 @@ export default function CliSection() {
           </a>
         </div>
 
-        <div
-          ref={terminalRef}
-          className={`overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 ${
-            terminalVisible ? "[animation:fade-in-up_0.5s_ease-out_backwards]" : ""
-          }`}
-        >
-          <div className="border-b border-neutral-800 px-4 py-2.5">
-            <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-500">Terminal</span>
-          </div>
-          <div className="overflow-x-auto px-5 py-5 font-mono text-[13px] leading-relaxed">
-            {TERMINAL_LINES.map((line, i) => (
-              <div key={i} className={`whitespace-pre ${lineClassName(line.tone)}`}>
-                {line.text || " "}
-              </div>
-            ))}
-          </div>
-        </div>
+        <CliTerminalDemo />
       </div>
     </section>
   );

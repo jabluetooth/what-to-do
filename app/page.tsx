@@ -10,6 +10,7 @@ import CliSection from "@/components/CliSection";
 import CapabilitiesSection from "@/components/CapabilitiesSection";
 import Footer from "@/components/Footer";
 import { useModalDialog } from "@/lib/useModalDialog";
+import { usePrefersReducedMotion } from "@/lib/usePrefersReducedMotion";
 
 const SESSION_POLL_INTERVAL_MS = 30_000;
 const TIMEOUT_WARNING_THRESHOLD_SECONDS = 5 * 60;
@@ -54,24 +55,6 @@ function scrambleLike(text: string, minLength: number): string {
     out += padded[i] === " " ? " " : SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
   }
   return out;
-}
-
-/** TextScramble's character shuffle is a JS rAF/setInterval loop, not a CSS animation, so
- *  globals.css's `prefers-reduced-motion` kill-switch (which only touches CSS transitions/
- *  animations) can't reach it — it checks the media query itself instead. */
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    // One-time sync from a browser-only API that can't be read during SSR (no window) or as lazy
-    // useState init for the same reason — the change listener below handles every update after.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setReduced(query.matches);
-    const handleChange = () => setReduced(query.matches);
-    query.addEventListener("change", handleChange);
-    return () => query.removeEventListener("change", handleChange);
-  }, []);
-  return reduced;
 }
 
 /**

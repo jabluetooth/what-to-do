@@ -82,6 +82,17 @@ button:disabled {
   }
 }
 
+@keyframes blink-cursor {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
 /* A thin, theme-matched scrollbar for scrollable panels sitting inside a rounded card (e.g. the
    History detail modal) — the browser's default scrollbar is wide enough to visibly clip past a
    rounded corner and doesn't pick up the surrounding neutral palette at all. Written as plain CSS
