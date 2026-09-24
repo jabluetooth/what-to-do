@@ -139,7 +139,13 @@ export async function regeneratePrdSection(input: {
     tool: PRD_SECTION_TOOL,
     userContent: `App idea prompt: "${input.prompt}"\n\nRest of the current PRD (context for consistency — do not repeat it back):\n\n${otherSections}\n\nRewrite only the "${def.title}" section. Plain text only: no markdown (no #/## headers, no **bold**, no _italics_); for lists use a plain "- " prefix per line, nothing else.${input.instructions ? ` Developer's guidance: ${input.instructions}` : ""}`,
     schema: PrdSectionOutputSchema,
+    plainTextField: "content",
   });
 
-  return { key: def.key, title: def.title, content };
+  // When the model answers in plain text it tends to open with the section's own title line.
+  const [firstLine, ...rest] = content.split("\n");
+  const repeatsTitle = firstLine.replace(/[:#*]/g, "").trim().toLowerCase() === def.title.toLowerCase();
+  const cleaned = repeatsTitle ? rest.join("\n").trim() : content;
+
+  return { key: def.key, title: def.title, content: cleaned || content };
 }

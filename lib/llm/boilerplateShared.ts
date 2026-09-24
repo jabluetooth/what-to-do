@@ -1,12 +1,29 @@
 import { z } from "zod";
-import { MODEL_QUALITY } from "@/lib/groq";
+import { MODEL_FAST, MODEL_QUALITY } from "@/lib/groq";
 import { callGroqTool } from "@/lib/llm/callTool";
 import type { PrdSection } from "@/lib/types";
 
 const RESOURCE_NAME_REGEX = /^[a-z][a-z0-9_]*$/;
 
+/**
+ * Models reliably pick a sensible name but often format it as "grocery-items" or "GroceryItems";
+ * rejecting that failed whole boilerplate jobs on a cosmetic detail (confirmed live, identically
+ * on all three attempts). Normalize to snake_case first, then validate what's left.
+ */
+function toSnakeIdentifier(raw: string): string {
+  return raw
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
 const ResourceNameSchema = z.object({
-  mainResourceName: z.string().min(1).regex(RESOURCE_NAME_REGEX, "must be lowercase, plural, snake/URL-safe"),
+  mainResourceName: z
+    .string()
+    .transform(toSnakeIdentifier)
+    .pipe(z.string().regex(RESOURCE_NAME_REGEX, "must be lowercase, plural, snake/URL-safe")),
 });
 
 const RESOURCE_NAME_TOOL = {
@@ -48,6 +65,7 @@ export function baseContext(prompt: string, sections: PrdSection[]): string {
 export async function pickResourceName(input: { prompt: string; sections: PrdSection[] }): Promise<string> {
   const { mainResourceName } = await callGroqTool({
     model: MODEL_QUALITY,
+    fallbackModel: MODEL_FAST,
     maxTokens: 100,
     tool: RESOURCE_NAME_TOOL,
     userContent: `${baseContext(input.prompt, input.sections)}\n\nPick the one core data entity this app most revolves around (not every feature — just this slice) and name it.`,

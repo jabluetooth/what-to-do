@@ -1,4 +1,4 @@
-import { getGroq } from "@/lib/groq";
+import { completionBudget, getGroq } from "@/lib/groq";
 import { markModelExhausted, parseGroqRetryAfterSeconds, isRateLimitError } from "@/lib/llm/modelAvailability";
 
 const MAX_ATTEMPTS = 2;
@@ -29,7 +29,7 @@ export async function generateCodeFile(params: {
     try {
       const response = await client.chat.completions.create({
         model: currentModel,
-        max_tokens: currentMaxTokens,
+        ...completionBudget(currentModel, currentMaxTokens),
         messages: [
           {
             role: "user",

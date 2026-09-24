@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { getGroq } from "@/lib/groq";
+import { completionBudget, getGroq } from "@/lib/groq";
 import { markModelExhausted, parseGroqRetryAfterSeconds, isRateLimitError } from "@/lib/llm/modelAvailability";
 
 interface ToolDef {
@@ -38,7 +38,21 @@ export async function callGroqTool<T>(params: {
   tool: ToolDef;
   userContent: string;
   schema: z.ZodType<T>;
+  /**
+   * For tools whose only output is one free-text field: the model often skips the tool call and
+   * just writes that text directly (confirmed live for PRD section regeneration — surfaced as a
+   * tool_use_failed whose failed_generation IS the section). That text is exactly the answer, so
+   * it's accepted as this field's value rather than discarded.
+   */
+  plainTextField?: string;
 }): Promise<T> {
+  const fromPlainText = (text: string | null | undefined): T | null => {
+    const trimmed = text?.trim();
+    if (!params.plainTextField || !trimmed || trimmed.startsWith("{") || trimmed.startsWith("<function")) return null;
+    const result = params.schema.safeParse({ [params.plainTextField]: trimmed });
+    return result.success ? result.data : null;
+  };
+
   let lastError: unknown;
   let currentModel = params.model;
   let switchedToFallback = false;
@@ -48,7 +62,7 @@ export async function callGroqTool<T>(params: {
       const client = getGroq();
       const response = await client.chat.completions.create({
         model: currentModel,
-        max_tokens: params.maxTokens,
+        ...completionBudget(currentModel, params.maxTokens),
         tools: [params.tool],
         tool_choice: { type: "function", function: { name: params.tool.function.name } },
         messages: [{ role: "user", content: params.userContent }],
@@ -63,9 +77,11 @@ export async function callGroqTool<T>(params: {
           result.error.message
         );
         lastError = new Error(`Invalid output shape from ${params.tool.function.name}`);
-        continue;
+      } else {
+        const plain = fromPlainText(response.choices[0]?.message?.content);
+        if (plain) return plain;
+        lastError = new Error(`Groq returned no tool call for ${params.tool.function.name}`);
       }
-      lastError = new Error(`Groq returned no tool call for ${params.tool.function.name}`);
     } catch (err) {
       if (isRateLimitError(err)) {
         void markModelExhausted(
@@ -84,7 +100,9 @@ export async function callGroqTool<T>(params: {
         }
       }
 
-      const recovered = recoverFromFailedGeneration(err, params.tool.function.name, params.schema);
+      const recovered =
+        recoverFromFailedGeneration(err, params.tool.function.name, params.schema) ??
+        fromPlainText((err as { error?: { error?: { failed_generation?: string } } })?.error?.error?.failed_generation);
       if (recovered) {
         console.warn(
           `[groq] recovered ${params.tool.function.name} from a tool_use_failed error on attempt ${attempt} (${currentModel})`
@@ -93,6 +111,15 @@ export async function callGroqTool<T>(params: {
       }
       console.warn(`[groq] attempt ${attempt} failed for ${params.tool.function.name} (${currentModel}):`, err);
       lastError = err;
+    }
+
+    // A malformed/empty tool call is usually this model misbehaving on this prompt, not a
+    // transient blip — retrying the same model mostly repeats the failure (confirmed live: all
+    // three attempts failing identically). The other model is an independent second chance.
+    if (params.fallbackModel && !switchedToFallback) {
+      console.warn(`[groq] ${params.tool.function.name}: switching to fallback model ${params.fallbackModel} after a failed attempt`);
+      currentModel = params.fallbackModel;
+      switchedToFallback = true;
     }
   }
 
@@ -107,9 +134,13 @@ function recoverFromFailedGeneration<T>(err: unknown, toolName: string, schema: 
     return null;
   }
 
-  const tagIndex = failedGeneration.indexOf(`<function=${toolName}>`);
+  // Two observed text-fallback shapes: `<function=name>{...}` and a JSON envelope
+  // `{"name": "name", "arguments": {...}}` — in both, the arguments object is the first `{`
+  // after the marker.
+  let tagIndex = failedGeneration.indexOf(`<function=${toolName}>`);
+  if (tagIndex === -1) tagIndex = failedGeneration.indexOf(`"arguments"`);
   if (tagIndex === -1) {
-    console.warn(`[groq recovery] ${toolName}: opening tag not found in failed_generation:`, failedGeneration);
+    console.warn(`[groq recovery] ${toolName}: no tool-call marker found in failed_generation:`, failedGeneration);
     return null;
   }
 

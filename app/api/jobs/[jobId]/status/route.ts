@@ -19,5 +19,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ jobI
     error: job.error,
     webContainerCompatible: job.webContainerCompatible,
     unvalidated: job.unvalidated,
+    stale: job.stale ?? false,
   });
 }

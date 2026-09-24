@@ -4,6 +4,7 @@ import { getJob, updateJob, claimJobRetry } from "@/lib/pipeline/jobs";
 import { enqueueBoilerplateJob } from "@/lib/pipeline/enqueue";
 import { isModelExhausted } from "@/lib/llm/modelAvailability";
 import { MODEL_QUALITY } from "@/lib/groq";
+import { enforceGenerationCap, getGenerationTier, RateLimitExceededError } from "@/lib/redis/rateLimit";
 
 /**
  * Domain-level retry, distinct from QStash's own transport-level delivery retries: this is for
@@ -35,6 +36,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
       { error: "Boilerplate generation is at capacity right now. Please try again in a few minutes." },
       { status: 503 }
     );
+  }
+
+  // A retry re-runs the full LLM generation, so it spends the same cap as a fresh generate —
+  // without this, a failed job could be retried indefinitely at full cost.
+  try {
+    await enforceGenerationCap(sessionId, job.stage, await getGenerationTier());
+  } catch (err) {
+    if (err instanceof RateLimitExceededError) {
+      return NextResponse.json({ error: err.message }, { status: 429 });
+    }
+    throw err;
   }
 
   await updateJob(jobId, {
