@@ -9,13 +9,33 @@ const STATE_TTL_SECONDS = 5 * 60;
  * allowlist a crafted link could bounce a freshly-minted bearer token to an arbitrary host
  * instead of back into the app. Two legitimate schemes exist:
  * - `whattodo://` — the app's own custom scheme, used by a real standalone/dev-client build.
- * - `exp://` — what `Linking.createURL()` resolves to when running inside Expo Go, since Expo Go
- *   has no custom scheme of its own to register. This is true regardless of whether the *backend*
- *   being hit is local or production — testing a deployed backend from Expo Go (this app's normal
- *   dev workflow before a standalone build exists) is a legitimate, expected combination, not a
- *   dev-only case, so this is not gated on NODE_ENV.
+ *   Only this app can receive it.
+ * - `exp://` — what `Linking.createURL()` resolves to inside Expo Go. Unlike the custom scheme,
+ *   an exp:// URL names a *host*, and Expo Go will happily load any project from any host — so
+ *   an unrestricted exp:// allowance let a crafted link hand the 90-day token to an attacker's
+ *   own Expo project. Restricted to loopback/private-network hosts, which is where an Expo Go
+ *   dev server actually runs (`exp://192.168.x.x:8081`). Tunnel mode (public *.exp.direct hosts)
+ *   is deliberately not allowed; use a dev-client build with the custom scheme instead.
  */
-const ALLOWED_REDIRECT_PREFIXES = ["whattodo://", "exp://"];
+const APP_SCHEME_PREFIX = "whattodo://";
+
+function isPrivateHost(hostname: string): boolean {
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]") return true;
+  const octets = hostname.split(".").map(Number);
+  if (octets.length !== 4 || octets.some((o) => !Number.isInteger(o) || o < 0 || o > 255)) return false;
+  const [a, b] = octets;
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+}
+
+function isAllowedRedirect(redirectUri: string): boolean {
+  if (redirectUri.startsWith(APP_SCHEME_PREFIX)) return true;
+  if (!redirectUri.startsWith("exp://")) return false;
+  try {
+    return isPrivateHost(new URL(redirectUri).hostname);
+  } catch {
+    return false;
+  }
+}
 
 function stateKey(state: string): string {
   return `mobile-auth-state:${state}`;
@@ -32,7 +52,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const redirectUri = searchParams.get("redirect_uri");
 
-  if (!redirectUri || !ALLOWED_REDIRECT_PREFIXES.some((prefix) => redirectUri.startsWith(prefix))) {
+  if (!redirectUri || !isAllowedRedirect(redirectUri)) {
     return NextResponse.json({ error: "Missing or unrecognized redirect_uri" }, { status: 400 });
   }
 

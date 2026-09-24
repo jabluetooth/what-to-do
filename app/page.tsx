@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { signIn } from "next-auth/react";
 import type { PlatformHint, PrdSection, RandomIdea, ScopeSizeHint, StackCategory, StackRecommendation } from "@/lib/types";
 import { STACK_ALTERNATIVES } from "@/lib/pipeline/stackMatrix";
+import { describeGeneratedCode } from "@/lib/pipeline/templateRegistry";
 import SiteNav from "@/components/SiteNav";
 import CliSection from "@/components/CliSection";
 import CapabilitiesSection from "@/components/CapabilitiesSection";
@@ -722,7 +723,10 @@ export default function Home() {
 
   function startOverride(category: StackCategory, currentChoice: string) {
     setOverridingCategory(category);
-    setOverrideChoice(currentChoice);
+    // Some picks (e.g. the FastAPI template's "API only" frontend) aren't user-selectable
+    // alternatives — start the select on a valid option rather than one the server rejects.
+    const options = STACK_ALTERNATIVES[category];
+    setOverrideChoice(options.includes(currentChoice) ? currentChoice : options[0]);
     setStackError(null);
   }
 
@@ -773,7 +777,7 @@ export default function Home() {
 
         if (data.state === "succeeded") {
           setBoilerplateJobState("succeeded");
-          setBoilerplateStale(false);
+          setBoilerplateStale(Boolean(data.stale));
           setBoilerplateWebContainerCompatible(data.webContainerCompatible ?? true);
           setBoilerplateUnvalidated(Boolean(data.unvalidated));
           return;
@@ -860,6 +864,7 @@ export default function Home() {
     void generateIdea();
   }
 
+  const generatedCode = stack ? describeGeneratedCode(stack) : null;
   const isSubmitting = state.phase === "submitting" || (state.phase === "clarifying" && state.submitting);
   // A rolled idea keeps its own short title; a hand-written prompt gets its first few words.
   const projectTitle = idea && prompt.startsWith(idea.title) ? idea.title : prompt.split(/\s+/).slice(0, 6).join(" ");
@@ -1327,20 +1332,21 @@ export default function Home() {
                           <label htmlFor={`${stackOverrideId}-${key}`} className="sr-only">
                             Override {label}
                           </label>
-                          <input
+                          {/* A select, not free text: the server only accepts these exact choices,
+                              so a typed-in value could only ever fail with "Invalid request". */}
+                          <select
                             id={`${stackOverrideId}-${key}`}
-                            list={`${stackOverrideId}-${key}-options`}
-                            type="text"
                             value={overrideChoice}
                             onChange={(e) => setOverrideChoice(e.target.value)}
                             disabled={stackLoading}
                             className="w-full rounded-xl border border-line bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                          />
-                          <datalist id={`${stackOverrideId}-${key}-options`}>
+                          >
                             {STACK_ALTERNATIVES[key].map((alt) => (
-                              <option key={alt} value={alt} />
+                              <option key={alt} value={alt} className={OPTION_CLASS}>
+                                {alt}
+                              </option>
                             ))}
-                          </datalist>
+                          </select>
                           <div className="flex gap-2">
                             <button
                               type="button"
@@ -1376,6 +1382,18 @@ export default function Home() {
           {stack && (
             <div className="border-t border-line pt-8">
               <h2 className="font-display text-4xl uppercase leading-none">The code</h2>
+              {generatedCode && (
+                <div className="mt-3 text-sm">
+                  <p className="text-muted">
+                    Generates <span className="font-medium text-foreground">{generatedCode.summary}</span>
+                  </p>
+                  {generatedCode.notReflected.length > 0 && (
+                    <p className="mt-1 text-amber-200">
+                      Not in the generated code yet: {generatedCode.notReflected.join(", ")}.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {boilerplateStale && boilerplateJobState === "succeeded" && (
                 <div className="mt-2 rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">

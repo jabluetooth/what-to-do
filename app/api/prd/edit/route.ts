@@ -4,6 +4,8 @@ import { getOrInitGuestSession, writeGuestSession } from "@/lib/redis/guestSessi
 import { PRD_SECTION_DEFS } from "@/lib/llm/prd";
 import { replaceSection } from "@/lib/pipeline/prdSections";
 import { markStackStaleIfPresent, markBoilerplateStaleIfPresent } from "@/lib/pipeline/staleness";
+import { moderateInput } from "@/lib/llm/moderation";
+import { moderationUnavailableResponse, parseJsonBody } from "@/lib/http";
 
 const SECTION_KEYS = PRD_SECTION_DEFS.map((s) => s.key) as [string, ...string[]];
 
@@ -13,14 +15,20 @@ const BodySchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const parsed = BodySchema.safeParse(await request.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid request", details: parsed.error.flatten() }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(request, BodySchema);
+  if (parsed.error) return parsed.error;
 
   const { id: sessionId, session } = await getOrInitGuestSession();
   if (!session.prdSections) {
     return NextResponse.json({ error: "No PRD to edit for this session." }, { status: 409 });
+  }
+
+  // Edited sections feed straight into stack and boilerplate generation, so they get the same
+  // gate as the original prompt — otherwise an edit is a way around it.
+  const moderation = await moderateInput(parsed.data.content);
+  if (moderation.verdict === "unavailable") return moderationUnavailableResponse();
+  if (moderation.verdict === "block") {
+    return NextResponse.json({ error: "This edit can't be saved.", reason: moderation.reason }, { status: 400 });
   }
 
   session.prdSections = replaceSection(session.prdSections, parsed.data.sectionKey, parsed.data.content);

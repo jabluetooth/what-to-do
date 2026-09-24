@@ -1,3 +1,5 @@
+import type { StackRecommendation } from "@/lib/types";
+
 /**
  * One descriptor per supported language/framework's data — id, matching rules, and stack-pick
  * overrides. Deliberately has NO imports from lib/llm or lib/sandbox: stackMatrix.ts (and
@@ -22,6 +24,10 @@ export interface TemplateDescriptor {
   hostingOverride?: string;
   /** Forces stackMatrix's auth pick when this template is chosen. Omit to leave the normal heuristic alone. */
   authOverride?: string;
+  /** The frontend pick this template's code actually contains. */
+  generatedFrontend: string;
+  /** Short human summary of what the generated project really is, shown next to the Generate button. */
+  generatedSummary: string;
 }
 
 /** First entry is the fallback (see resolveTemplate) — keep it that way rather than reordering. */
@@ -31,6 +37,8 @@ export const TEMPLATE_REGISTRY: TemplateDescriptor[] = [
     backendChoice: "Next.js API routes / Server Actions (same app)",
     keywords: [],
     webContainerCompatible: true,
+    generatedFrontend: "Next.js (React, TypeScript)",
+    generatedSummary: "Next.js + Postgres (Drizzle), no auth",
   },
   {
     id: "fastapi-postgres",
@@ -47,6 +55,8 @@ export const TEMPLATE_REGISTRY: TemplateDescriptor[] = [
     // Auth.js is itself a Next.js-ecosystem library, not just "unimplemented for FastAPI" the
     // way hosting/DB choices are — recommending it for a Python API is a category mismatch.
     authOverride: "Roll your own (FastAPI has no bundled auth library)",
+    generatedFrontend: "None (API only, no generated frontend)",
+    generatedSummary: "FastAPI + Postgres (SQLAlchemy), API only, no auth",
   },
 ];
 
@@ -59,4 +69,21 @@ export function resolveTemplate(backendChoice: string | undefined): TemplateDesc
 
 export function getTemplateById(id: string): TemplateDescriptor | undefined {
   return TEMPLATE_REGISTRY.find((t) => t.id === id);
+}
+
+/**
+ * Which stack picks the generated code does NOT reflect. Only two templates exist, chosen by the
+ * backend pick alone — every other pick (a MongoDB or Clerk override, a mobile frontend) changes
+ * the recommendation but not the code, which was previously never said anywhere (confirmed live:
+ * a MongoDB override still produced a Postgres/Drizzle project). Hosting is omitted: it's a
+ * deploy target, not something the code has to contain. Neither template includes auth.
+ */
+export function describeGeneratedCode(stack: StackRecommendation): { summary: string; notReflected: string[] } {
+  const template = resolveTemplate(stack.backend.choice);
+  const notReflected: string[] = [];
+  if (template.backendChoice !== stack.backend.choice) notReflected.push(stack.backend.choice);
+  if (template.generatedFrontend !== stack.frontend.choice) notReflected.push(stack.frontend.choice);
+  if (!stack.database.choice.startsWith("PostgreSQL")) notReflected.push(stack.database.choice);
+  if (!stack.auth.choice.startsWith("Roll your own")) notReflected.push(stack.auth.choice);
+  return { summary: template.generatedSummary, notReflected };
 }

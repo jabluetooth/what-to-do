@@ -38,6 +38,9 @@ const VAGUENESS_TOOL = {
   },
 };
 
+/** Below this many words, a prompt is treated as vague when the model check itself fails. */
+const SHORT_PROMPT_WORDS = 8;
+
 /** PRD §6.1: if too vague, ask exactly one clarifying question rather than generating a low-quality PRD from nothing. */
 export async function checkVagueness(prompt: string, hints?: PromptHints): Promise<VaguenessResult> {
   try {
@@ -49,7 +52,13 @@ export async function checkVagueness(prompt: string, hints?: PromptHints): Promi
       userContent: `App idea prompt: "${prompt}"\nOptional hints: ${JSON.stringify(hints ?? {})}\n\nIs this specific enough to generate a real PRD (problem statement, target user, core features, user stories, out-of-scope, complexity estimate)? Mark vague only if it's too thin to say anything meaningful about who it's for or what it does — not merely short.`,
       schema: VaguenessResultSchema,
     });
-  } catch {
-    return { vague: false };
+  } catch (err) {
+    // Failing open here generated a full, confidently-wrong PRD for "an app" (confirmed live —
+    // the model had actually started answering vague:true before its output got cut off). A
+    // short prompt is exactly the case this gate exists for, so ask rather than guess; a
+    // substantial prompt proceeds, since a failed check says nothing bad about it.
+    console.warn("[vagueness] check failed, falling back to a length heuristic:", err);
+    const wordCount = prompt.trim().split(/\s+/).length;
+    return wordCount < SHORT_PROMPT_WORDS ? { vague: true } : { vague: false };
   }
 }

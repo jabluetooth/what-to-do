@@ -66,5 +66,12 @@ export async function GET() {
   const checks = { redis, qstash, r2, groq, db };
   const allOk = Object.values(checks).every((c) => c.ok);
 
-  return NextResponse.json({ ok: allOk, checks }, { status: allOk ? 200 : 503 });
+  // This route is public, and the raw errors can name env vars and infra details — log them
+  // for whoever operates the deploy, and return only pass/fail per dependency.
+  for (const [name, check] of Object.entries(checks)) {
+    if (!check.ok) console.error(`[health] ${name} check failed:`, check.error);
+  }
+  const publicChecks = Object.fromEntries(Object.entries(checks).map(([name, check]) => [name, { ok: check.ok }]));
+
+  return NextResponse.json({ ok: allOk, checks: publicChecks }, { status: allOk ? 200 : 503 });
 }

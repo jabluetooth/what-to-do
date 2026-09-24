@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getOrInitGuestSession, writeGuestSession } from "@/lib/redis/guestSession";
-import { enforceGenerationCap, getGenerationTier, RateLimitExceededError } from "@/lib/redis/rateLimit";
+import {
+  enforceGenerationCap,
+  refundGenerationCap,
+  getGenerationTier,
+  RateLimitExceededError,
+} from "@/lib/redis/rateLimit";
 import { PRD_SECTION_DEFS, regeneratePrdSection } from "@/lib/llm/prd";
 import { replaceSection } from "@/lib/pipeline/prdSections";
 import { markStackStaleIfPresent, markBoilerplateStaleIfPresent } from "@/lib/pipeline/staleness";
+import { moderateInput } from "@/lib/llm/moderation";
+import { moderationUnavailableResponse, parseJsonBody } from "@/lib/http";
 
 const SECTION_KEYS = PRD_SECTION_DEFS.map((s) => s.key) as [string, ...string[]];
 
@@ -14,23 +21,34 @@ const BodySchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const parsed = BodySchema.safeParse(await request.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid request", details: parsed.error.flatten() }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(request, BodySchema);
+  if (parsed.error) return parsed.error;
 
   const { id: sessionId, session } = await getOrInitGuestSession();
   if (!session.prdSections || !session.prompt) {
     return NextResponse.json({ error: "No PRD to regenerate for this session." }, { status: 409 });
   }
 
+  const tier = await getGenerationTier();
   try {
-    await enforceGenerationCap(sessionId, "prd", await getGenerationTier());
+    await enforceGenerationCap(sessionId, "prd", tier);
   } catch (err) {
     if (err instanceof RateLimitExceededError) {
       return NextResponse.json({ error: err.message }, { status: 429 });
     }
     throw err;
+  }
+
+  // Optional free-text steering goes into the LLM prompt like any other user input.
+  if (parsed.data.instructions) {
+    const moderation = await moderateInput(parsed.data.instructions);
+    if (moderation.verdict === "unavailable") {
+      await refundGenerationCap(sessionId, "prd", tier);
+      return moderationUnavailableResponse();
+    }
+    if (moderation.verdict === "block") {
+      return NextResponse.json({ error: "These instructions can't be processed." }, { status: 400 });
+    }
   }
 
   let newSection;
@@ -43,6 +61,7 @@ export async function POST(request: Request) {
       instructions: parsed.data.instructions,
     });
   } catch {
+    await refundGenerationCap(sessionId, "prd", tier);
     return NextResponse.json(
       { error: "Couldn't regenerate this section right now. Please try again in a moment." },
       { status: 502 }

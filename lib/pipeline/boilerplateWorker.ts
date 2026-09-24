@@ -3,7 +3,7 @@ import { readGuestSession, writeGuestSessionData } from "@/lib/redis/guestSessio
 import { loadTemplate, type TemplateFile } from "@/lib/pipeline/template";
 import { resolveTemplate } from "@/lib/pipeline/templateRegistry";
 import { getTemplateImplementation, type TemplateImplementation } from "@/lib/pipeline/templateImplementations";
-import { writeProjectFiles, buildZip, writeProjectZip } from "@/lib/pipeline/projectFiles";
+import { writeProjectFiles, buildZip, writeProjectZip, deleteProjectFiles } from "@/lib/pipeline/projectFiles";
 import type { ValidationResult } from "@/lib/sandbox/validate";
 import { refundGenerationCap } from "@/lib/redis/rateLimit";
 
@@ -40,10 +40,9 @@ export async function runBoilerplateJob(jobId: string): Promise<void> {
     const session = await readGuestSession(job.sessionId);
     if (!session || !session.prdSections || !session.prompt) {
       await updateJob(jobId, { state: "failed", progress: 100, error: "Session or PRD missing." });
-      // Not the user's fault (session expired/race, not a bad generation) — and only refund the
-      // one cap unit the original /api/boilerplate/generate call actually consumed, not on a
-      // retry that never incremented it again.
-      if (job.attempt === 1) await refundGenerationCap(job.sessionId, "boilerplate");
+      // Not the user's fault (session expired/race, not a bad generation). Every attempt —
+      // the original generate and each retry — consumed one cap unit, so any attempt refunds.
+      await refundGenerationCap(job.sessionId, "boilerplate");
       return;
     }
 
@@ -81,18 +80,61 @@ export async function runBoilerplateJob(jobId: string): Promise<void> {
         });
         // Only refund for a platform-side failure (sandbox ran out of disk), not an ordinary
         // failed build check — that already spent real LLM/compute cost, which the cap exists
-        // to protect against. Same attempt===1 reasoning as the session-missing case above.
-        if (validation.diskFull && job.attempt === 1) {
+        // to protect against.
+        if (validation.diskFull) {
           await refundGenerationCap(job.sessionId, "boilerplate");
         }
         return;
       }
 
+      // Re-read rather than write back the copy from the start of the run: this job takes
+      // minutes, and writing that stale snapshot back silently reverted any PRD edit or stack
+      // override made in the meantime (confirmed live), and resurrected a session the user had
+      // already discarded. Only the boilerplate fields are patched onto the current session.
+      const latest = await readGuestSession(job.sessionId);
+      if (!latest) {
+        // Started over, converted to an account, or expired while this ran — the session is
+        // gone on purpose, so don't bring it back, and don't leave its files behind either.
+        await deleteProjectFiles(prefix).catch((err) => {
+          console.warn("[boilerplateWorker] failed to delete files for an ended session:", err);
+        });
+        await updateJob(jobId, {
+          state: "failed",
+          progress: 100,
+          message: "Session ended",
+          error: "This session ended before the boilerplate finished.",
+        });
+        return;
+      }
+
+      // Generated from the snapshot above — if the PRD or stack moved on meanwhile, the result
+      // is already out of date and should say so rather than claim to be current.
+      const inputsChanged =
+        JSON.stringify(latest.prdSections) !== JSON.stringify(session.prdSections) ||
+        JSON.stringify(latest.stack) !== JSON.stringify(session.stack);
+
+      const previousPrefix = latest.boilerplateR2Prefix;
+      latest.boilerplateR2Prefix = prefix;
+      latest.boilerplateStale = inputsChanged;
+      latest.boilerplateWebContainerCompatible = descriptor.webContainerCompatible;
+      latest.boilerplateBuildVerified = false;
+      latest.currentStage = "boilerplate";
+      latest.updatedAt = new Date().toISOString();
+      await writeGuestSessionData(job.sessionId, latest);
+
+      // The superseded boilerplate is unreachable now; the R2 lifecycle rule is only a backstop.
+      if (previousPrefix && previousPrefix !== prefix) {
+        await deleteProjectFiles(previousPrefix).catch((err) => {
+          console.warn("[boilerplateWorker] failed to delete superseded boilerplate files:", err);
+        });
+      }
+
+      // Marked succeeded only after the session points at the new files, so a client that sees
+      // "succeeded" can immediately download/preview them.
+      //
       // unvalidated (FastAPI-only) means no Python interpreter was found at all, so nothing was
-      // actually checked — the inverse of what "syntax-only check" would suggest. Both this
-      // message and the flag itself are threaded through to the client (jobs.ts, the status
-      // route, app/page.tsx) since the UI previously guessed this from webContainerCompatible
-      // alone and always claimed "syntax checked" even when validation.unvalidated was true.
+      // actually checked. Both this message and the flag are threaded through to the client
+      // (jobs.ts, the status route, app/page.tsx).
       await updateJob(jobId, {
         state: "succeeded",
         progress: 100,
@@ -100,14 +142,8 @@ export async function runBoilerplateJob(jobId: string): Promise<void> {
         resultRef: prefix,
         webContainerCompatible: descriptor.webContainerCompatible,
         unvalidated: validation.unvalidated ?? false,
+        stale: inputsChanged,
       });
-
-      session.boilerplateR2Prefix = prefix;
-      session.boilerplateStale = false;
-      session.boilerplateWebContainerCompatible = descriptor.webContainerCompatible;
-      session.currentStage = "boilerplate";
-      session.updatedAt = new Date().toISOString();
-      await writeGuestSessionData(job.sessionId, session);
     } catch (err) {
       await updateJob(jobId, {
         state: "failed",

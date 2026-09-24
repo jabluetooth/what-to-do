@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireMobileUserId } from "@/lib/mobileAuth";
 import { getRecentIdeaTitles, pushRecentIdeaTitle } from "@/lib/redis/recentIdeas";
-import { enforceGenerationCap, RateLimitExceededError } from "@/lib/redis/rateLimit";
+import { enforceGenerationCap, refundGenerationCap, RateLimitExceededError } from "@/lib/redis/rateLimit";
 import { generateRandomIdea } from "@/lib/llm/ideas";
-import { moderateInput } from "@/lib/llm/moderation";
+import { moderateInput, passedModeration } from "@/lib/llm/moderation";
 import type { PlatformHint } from "@/lib/types";
 
 function parsePlatformHint(request: Request): PlatformHint | undefined {
@@ -21,8 +21,9 @@ export async function GET(request: Request) {
   if (auth.error) return auth.error;
   const sessionId = `mobile:${auth.userId}`;
 
+  const tier = "signedIn";
   try {
-    await enforceGenerationCap(sessionId, "ideas", "signedIn");
+    await enforceGenerationCap(sessionId, "ideas", tier);
   } catch (err) {
     if (err instanceof RateLimitExceededError) {
       return NextResponse.json({ error: err.message }, { status: 429 });
@@ -37,6 +38,9 @@ export async function GET(request: Request) {
   try {
     idea = await generateRandomIdea(recentTitles, platformHint);
   } catch {
+    // A platform-side failure (the model misbehaving), not the user's fault — don't let it burn
+    // one of their few daily rolls.
+    await refundGenerationCap(sessionId, "ideas", tier);
     return NextResponse.json(
       { error: "Couldn't generate an idea right now. Please try again in a moment." },
       { status: 502 }
@@ -46,7 +50,8 @@ export async function GET(request: Request) {
   // Generated ideas pass through the same moderation gate as user prompts (PRD §7) — this is
   // LLM output, not user input, but it still reaches the client and can seed the pipeline.
   const moderation = await moderateInput(`${idea.title}: ${idea.description}`);
-  if (moderation.verdict === "block") {
+  if (!passedModeration(moderation)) {
+    await refundGenerationCap(sessionId, "ideas", tier);
     return NextResponse.json(
       { error: "Couldn't generate an idea right now. Please try again." },
       { status: 502 }

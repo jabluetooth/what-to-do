@@ -16,6 +16,8 @@ export interface JobRecord {
   webContainerCompatible?: boolean;
   /** True when the boilerplate's build/syntax check was skipped entirely (no Python interpreter found) rather than run and passed — see validateFastapiBoilerplate. */
   unvalidated?: boolean;
+  /** True when the PRD or stack changed while this job ran, so its result was out of date on arrival. */
+  stale?: boolean;
   attempt: number;
   createdAt: string;
   updatedAt: string;

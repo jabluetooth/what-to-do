@@ -1,18 +1,22 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getOrInitGuestSession, writeGuestSession } from "@/lib/redis/guestSession";
-import { enforceGenerationCap, getGenerationTier, RateLimitExceededError } from "@/lib/redis/rateLimit";
+import {
+  enforceGenerationCap,
+  refundGenerationCap,
+  getGenerationTier,
+  RateLimitExceededError,
+} from "@/lib/redis/rateLimit";
 import { moderateInput } from "@/lib/llm/moderation";
 import { checkVagueness } from "@/lib/llm/vagueness";
 import { generatePrd } from "@/lib/llm/prd";
+import { moderationUnavailableResponse, parseJsonBody } from "@/lib/http";
 
 const BodySchema = z.object({ answer: z.string().trim().min(1).max(1000) });
 
 export async function POST(request: Request) {
-  const parsed = BodySchema.safeParse(await request.json());
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid request", details: parsed.error.flatten() }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(request, BodySchema);
+  if (parsed.error) return parsed.error;
 
   const { id: sessionId, session } = await getOrInitGuestSession();
 
@@ -20,8 +24,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No pending clarification for this session." }, { status: 409 });
   }
 
+  const tier = await getGenerationTier();
   try {
-    await enforceGenerationCap(sessionId, "prd", await getGenerationTier());
+    await enforceGenerationCap(sessionId, "prd", tier);
   } catch (err) {
     if (err instanceof RateLimitExceededError) {
       return NextResponse.json({ error: err.message }, { status: 429 });
@@ -35,6 +40,10 @@ export async function POST(request: Request) {
   // Clarification answers are free text same as the initial prompt (PRD §7) — the vagueness
   // recheck below only judges specificity, not safety, so this must run independently.
   const moderation = await moderateInput(answer);
+  if (moderation.verdict === "unavailable") {
+    await refundGenerationCap(sessionId, "prd", tier);
+    return moderationUnavailableResponse();
+  }
   if (moderation.verdict === "block") {
     return NextResponse.json(
       { error: "This prompt can't be processed.", reason: moderation.reason },
@@ -56,6 +65,7 @@ export async function POST(request: Request) {
       lowConfidence: recheck.vague,
     }));
   } catch {
+    await refundGenerationCap(sessionId, "prd", tier);
     return NextResponse.json(
       { error: "Couldn't generate your PRD right now. Please try again in a moment." },
       { status: 502 }
