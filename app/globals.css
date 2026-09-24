@@ -6,8 +6,17 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  /* "The Draw" palette — deliberately not Relay's terracotta, Insight's cyan glass, or Mimo's
+     warm cream: an ink-black ground with one loud acid-lime accent, the color a lottery ball or
+     a highlighter lands in. Lime is reserved for the moment of choice (the roll, the primary
+     action, the landed idea's flood) so it keeps its punch. */
+  --background: #0b0b09;
+  --foreground: #f3f1ea;
+  --surface: #151512;
+  --muted: #8b887d;
+  --line: rgba(243, 241, 234, 0.1);
+  --accent: #d4ff3a;
+  --accent-ink: #0b0b09;
   /* The theme is forced dark (see above), so native form controls should be too — without this,
      <select>'s open options popup, checkboxes, and scrollbars all fall back to the browser's
      light-mode rendering (a plain white list with black text) regardless of any `dark:` Tailwind
@@ -18,14 +27,71 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-anton);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* Film grain over the whole page — a fixed SVG-noise layer, so the flat ink ground reads as
+   printed matter rather than a default dark-mode fill. Purely decorative, never interactive. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@keyframes marquee-left {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes marquee-right {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes wobble {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(-10deg); }
+  40% { transform: rotate(8deg); }
+  60% { transform: rotate(-4deg); }
+  80% { transform: rotate(2deg); }
+}
+
+/* Vertical speed-streaks behind the idea reel while it spins. */
+@keyframes streak {
+  from { background-position: 0 0; }
+  to { background-position: 0 -600px; }
+}
+
+@keyframes indeterminate {
+  0% { transform: translateX(-100%) scaleX(0.3); }
+  50% { transform: translateX(10%) scaleX(0.6); }
+  100% { transform: translateX(110%) scaleX(0.3); }
 }
 
 /* Browsers only give <a href> a pointer cursor by default — a plain <button> (and this app has

@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { signIn } from "next-auth/react";
 import type { PlatformHint, PrdSection, RandomIdea, ScopeSizeHint, StackCategory, StackRecommendation } from "@/lib/types";
 import { STACK_ALTERNATIVES } from "@/lib/pipeline/stackMatrix";
 import SiteNav from "@/components/SiteNav";
-import Watermark from "@/components/Watermark";
 import CliSection from "@/components/CliSection";
 import CapabilitiesSection from "@/components/CapabilitiesSection";
+import Hero from "@/components/Hero";
+import IdeaRoller from "@/components/IdeaRoller";
+import { Faq, HowItWorks } from "@/components/LandingSections";
+import { EASE, Kicker } from "@/components/fx/Reveal";
 import Footer from "@/components/Footer";
 import { useModalDialog } from "@/lib/useModalDialog";
-import { usePrefersReducedMotion } from "@/lib/usePrefersReducedMotion";
 
 const SESSION_POLL_INTERVAL_MS = 30_000;
 const TIMEOUT_WARNING_THRESHOLD_SECONDS = 5 * 60;
@@ -21,182 +24,12 @@ const TIMEOUT_WARNING_THRESHOLD_SECONDS = 5 * 60;
  *  forces dark, matching every other component's dark: pairing in case that forcing is ever
  *  relaxed). Chromium and Firefox both respect background-color/color set directly on <option>;
  *  Safari's support is partial, where it just falls back to color-scheme's default dark styling. */
-const OPTION_CLASS = "bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100";
+const OPTION_CLASS = "bg-accent-ink text-accent";
 
 function formatDuration(totalSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}m ${seconds}s`;
-}
-
-const SCRAMBLE_CHARS = "!<>-_\\/[]{}—=+*^?#0123456789";
-const SCRAMBLE_DURATION_MS = 2800;
-// How often the not-yet-revealed characters reroll to a new random glyph during the reveal —
-// independent of SCRAMBLE_DURATION_MS (which governs the overall left-to-right sweep).
-const SCRAMBLE_CHAR_INTERVAL_MS = 90;
-const LOADING_SCRAMBLE_INTERVAL_MS = 140;
-// A short target string (e.g. "random" at 6 chars) made the continuous loading scramble narrow
-// enough to visibly shift/reflow the centered heading around it — flooring the scrambled length
-// keeps it at least this wide regardless of what the underlying text is.
-const MIN_LOADING_SCRAMBLE_LENGTH = 6;
-const PLACEHOLDER_TARGET = "Get a PRD, tech stack, and boilerplate from one idea.";
-
-/**
- * Scrambles every non-space character of `text` (padded with trailing spaces up to `minLength`
- * if shorter) while keeping spaces as spaces. Preserving the real word/space layout — not just
- * a flat random run of characters — matters for multi-word text: a scrambled blob with no spaces
- * at all can't wrap the same way the real text does, so a subtitle that normally wraps to two
- * lines could collapse to one (or vice versa) during loading and shift everything below it.
- */
-function scrambleLike(text: string, minLength: number): string {
-  const padded = text.length >= minLength ? text : text + " ".repeat(minLength - text.length);
-  let out = "";
-  for (let i = 0; i < padded.length; i++) {
-    out += padded[i] === " " ? " " : SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
-  }
-  return out;
-}
-
-/**
- * Two phases, one persistent component (it must never unmount between them — an earlier version
- * swapped between a plain <span> and this component depending on `loading`, which remounted it
- * on every landing and made the reveal below always skip straight to the final text):
- *
- * - While `loading`: continuously re-randomizes every character, purely as a "generating"
- *   indicator — never resolves to anything, never stops on its own.
- * - Once `loading` ends and `play` has changed since the last reveal: locks `text` in
- *   left-to-right over SCRAMBLE_DURATION_MS, random characters standing in for the unrevealed
- *   tail. A `play` that hasn't changed (e.g. `loading` toggling with no fresh idea behind it)
- *   just swaps `display` to `text` instantly instead of animating or going stale.
- */
-function TextScramble({
-  text,
-  play,
-  loading,
-  prefix,
-  hidePrefix,
-  className,
-}: {
-  text: string;
-  play: number;
-  loading: boolean;
-  /** Static text rendered before the scrambled part — visible and accessible, never scrambled
-      itself. Kept in the same component instance as the scrambled part (not a sibling swapped in
-      via a ternary) specifically so switching it on/off never remounts this component — an
-      earlier version did exactly that between the placeholder and a real idea, which reset the
-      "already played this reveal" tracking and made the reveal silently skip itself. */
-  prefix?: string;
-  /** When true, collapses `prefix` away with a CSS transition instead of it just vanishing the
-      instant `prefix` itself would otherwise change — the abrupt cut was the "seam" between the
-      placeholder and a real idea landing. `prefix` text itself stays constant; only this
-      visibility toggles, so there's always something present to transition. */
-  hidePrefix?: boolean;
-  className?: string;
-}) {
-  const [display, setDisplay] = useState(text);
-  const frameRef = useRef<number | null>(null);
-  const lastPlayRef = useRef(play);
-  const reducedMotion = usePrefersReducedMotion();
-
-  useEffect(() => {
-    if (!loading) return;
-    if (reducedMotion) {
-      // Reduced motion means no continuous shuffle — show the real text and skip the loop below.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDisplay(text);
-      return;
-    }
-    const update = () => setDisplay(scrambleLike(text, MIN_LOADING_SCRAMBLE_LENGTH));
-    // setInterval's first tick only fires after a full LOADING_SCRAMBLE_INTERVAL_MS, which left
-    // the previous (stale) text visibly sitting there for a beat right after the button is
-    // pressed. A rAF-scheduled first update covers that gap with a near-immediate frame instead.
-    const frame = requestAnimationFrame(update);
-    const id = setInterval(update, LOADING_SCRAMBLE_INTERVAL_MS);
-    return () => {
-      cancelAnimationFrame(frame);
-      clearInterval(id);
-    };
-  }, [loading, reducedMotion, text]);
-
-  useEffect(() => {
-    if (loading) return;
-    if (reducedMotion) {
-      lastPlayRef.current = play;
-      // Reduced motion means no left-to-right reveal sweep — jump straight to the final text.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDisplay(text);
-      return;
-    }
-    if (play === lastPlayRef.current) {
-      setDisplay(text);
-      return;
-    }
-    lastPlayRef.current = play;
-
-    const start = performance.now();
-    // Reveal progress (lockedCount) still advances every frame for a smooth left-to-right
-    // sweep, but the random glyphs standing in for not-yet-revealed characters only reroll
-    // every SCRAMBLE_CHAR_INTERVAL_MS — rerolling all of them on every animation frame (~60/sec)
-    // reads as an imperceptible blur rather than a visible shuffle.
-    let lastRerollAt = -Infinity;
-    let randomChars: string[] = [];
-    function tick(now: number) {
-      const progress = Math.min((now - start) / SCRAMBLE_DURATION_MS, 1);
-      const lockedCount = Math.floor(progress * text.length);
-
-      if (now - lastRerollAt >= SCRAMBLE_CHAR_INTERVAL_MS || randomChars.length !== text.length) {
-        randomChars = Array.from({ length: text.length }, () => SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)]);
-        lastRerollAt = now;
-      }
-
-      let out = "";
-      for (let i = 0; i < text.length; i++) {
-        out += i < lockedCount || text[i] === " " ? text[i] : randomChars[i];
-      }
-      setDisplay(out);
-      if (progress < 1) {
-        frameRef.current = requestAnimationFrame(tick);
-      } else {
-        setDisplay(text);
-      }
-    }
-    frameRef.current = requestAnimationFrame(tick);
-    return () => {
-      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
-    };
-  }, [loading, play, reducedMotion, text]);
-
-  return (
-    <span className={className}>
-      {prefix && (
-        <span
-          className={`inline-block overflow-hidden whitespace-nowrap align-top font-mono leading-none transition-[max-width,opacity] duration-500 ease-out ${
-            hidePrefix ? "max-w-0 opacity-0" : "max-w-[20ch] opacity-100"
-          }`}
-        >
-          {/* A trailing plain space here is at real risk of being silently collapsed by normal
-              whitespace rules right at this inline-block's edge — a non-breaking space can't be. */}
-          {prefix.replace(/ $/, " ")}
-        </span>
-      )}
-      {/* font-mono: every glyph in the scramble charset renders at a fixed advance width, so the
-          scrambled portion's own rendered width never fluctuates between random draws — without
-          this, a proportional font visibly shifts any static text sharing its line (e.g. the
-          "Generate one at " prefix) left/right as the scramble cycles through different-width
-          characters. The prefix is also font-mono for the same reason it's here at all: mixing
-          two different font families inline never shares a baseline/cap-height, which read as
-          the scrambled text floating noticeably higher than the prefix next to it.
-
-          inline-block + align-top + leading-none on both spans, matching each other exactly:
-          a plain inline element's box is sized from the font's natural ascent+descent metrics,
-          not the CSS line-height, so it can end up visibly taller than an inline-block sibling
-          using the same font-size/line-height — which is exactly what made the scrambled text
-          look larger than the prefix next to it even after both moved to the same font. */}
-      <span aria-hidden="true" className="inline-block align-top font-mono leading-none">
-        {display}
-      </span>
-    </span>
-  );
 }
 
 type FlowState =
@@ -327,113 +160,6 @@ function LoadingDots() {
   );
 }
 
-const ABOUT_STEPS = [
-  {
-    title: "Start with an idea",
-    body: "Describe your own, or generate a random one to get unstuck.",
-  },
-  {
-    title: "Get a PRD",
-    body: "A scoped product spec (problem, target user, MVP features) generated in seconds, editable section by section.",
-  },
-  {
-    title: "Pick a tech stack",
-    body: "A curated recommendation, not a black box. Override any piece if you already know what you want.",
-  },
-  {
-    title: "Generate boilerplate & preview it live",
-    body: "Scaffolded code from your stack, running in-browser via WebContainers before you download it.",
-  },
-];
-
-const FAQ_ITEMS = [
-  {
-    q: "Do I need to sign up?",
-    a: "No. The whole flow (idea, PRD, tech stack, boilerplate, live preview) works as a guest. Sign in with GitHub only if you want to keep a project past your guest session, or push the generated code straight to a new repo.",
-  },
-  {
-    q: "How long does my guest session last?",
-    a: "Guest work is kept for a limited time and purged automatically after inactivity. Sign in before it expires to keep it.",
-  },
-  {
-    q: "Can I push the generated code to GitHub?",
-    a: "Yes, optionally. Sign in, grant repo access from your account page, and turn on auto-push: a private repo is created the next time you save a project.",
-  },
-  {
-    q: "Is the generated boilerplate actually tested?",
-    a: "It's checked for syntax errors automatically. Opening the live preview goes further, actually installing and running it in-browser so you can confirm it builds before downloading.",
-  },
-  {
-    q: "Is there a limit to how many times I can generate?",
-    a: "Yes, a small daily cap per stage to keep things fair on a free tier. Signing in raises the limit.",
-  },
-];
-
-/** Single-open accordion (WAI-ARIA Accordion Pattern) — only one answer visible at a time, so a
- *  long FAQ list stays scannable instead of dumping every answer on the page at once. */
-function FaqAccordion({ items }: { items: { q: string; a: string }[] }) {
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const baseId = useId();
-
-  return (
-    <div className="mt-10 divide-y divide-neutral-200 dark:divide-neutral-800 overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800">
-      {items.map((item, i) => {
-        const isOpen = openIndex === i;
-        const buttonId = `${baseId}-faq-button-${i}`;
-        const panelId = `${baseId}-faq-panel-${i}`;
-        return (
-          <div key={item.q}>
-            <h3>
-              <button
-                type="button"
-                id={buttonId}
-                onClick={() => setOpenIndex(isOpen ? null : i)}
-                aria-expanded={isOpen}
-                aria-controls={panelId}
-                className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left hover:bg-neutral-50 dark:hover:bg-white/5"
-              >
-                <span className="text-sm font-medium">{item.q}</span>
-                <svg
-                  viewBox="0 0 24 24"
-                  className={`h-4 w-4 shrink-0 text-neutral-400 transition-transform duration-300 ${isOpen ? "rotate-180" : ""}`}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  aria-hidden="true"
-                >
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
-            </h3>
-            {/* grid-rows 0fr->1fr animates height without knowing the content's pixel height up
-                front — content stays mounted (not conditionally rendered) so the transition has
-                something to animate between renders. */}
-            <div
-              className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
-                isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-              }`}
-            >
-              <div className="overflow-hidden">
-                <div
-                  id={panelId}
-                  role="region"
-                  aria-labelledby={buttonId}
-                  aria-hidden={!isOpen}
-                  className={`px-4 pt-1 pb-4 text-sm text-neutral-600 dark:text-neutral-400 transition-opacity duration-300 ${
-                    isOpen ? "opacity-100 delay-100" : "opacity-0"
-                  }`}
-                >
-                  {item.a}
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 const STACK_CATEGORIES: { key: StackCategory; label: string }[] = [
   { key: "frontend", label: "Frontend" },
   { key: "backend", label: "Backend" },
@@ -456,13 +182,11 @@ export default function Home() {
   // The manual prompt form is collapsed behind this by default — the landing page's primary path
   // is the random idea generator, not typing a prompt.
   const [showManualForm, setShowManualForm] = useState(false);
-  // Bumped only when a new idea actually lands — TextScramble replays its reveal on a change,
-  // never on mount (starts at 0, see its own "play === lastPlayRef.current" guard). Drives the
-  // subtitle; the title uses its own titlePlay below so it alone can also replay on landing.
-  const [scrambleKey, setScrambleKey] = useState(0);
-  // Same idea, title-only — also bumped once on mount so the headline (and only the headline)
-  // plays its scramble-in as soon as the page loads, not just when a fresh idea lands.
-  const [titlePlay, setTitlePlay] = useState(0);
+  // The full-screen idea roller (components/IdeaRoller.tsx). drawNumber bumps once per roll so the
+  // roller replays its spin and landing even when two rolls happen to return the same idea.
+  const [rollerOpen, setRollerOpen] = useState(false);
+  const [drawNumber, setDrawNumber] = useState(0);
+  const closeRoller = useCallback(() => setRollerOpen(false), []);
   const [showSignInModal, setShowSignInModal] = useState(false);
   // Distinct from SiteNav's own sign-in check (a separate, simple GET each — consistent with how
   // every other lightweight fetch in this app is independently re-fetched rather than shared).
@@ -472,15 +196,7 @@ export default function Home() {
   // save.
   const [isSignedIn, setIsSignedIn] = useState(false);
 
-  // Slideshow transition (hero/clarifying -> result/converted), forward-only: once a PRD exists
-  // there's no in-app path back to the hero except "Start over," which resets everything and
-  // isn't worth animating. showHeroSlide keeps the hero mounted for the exit animation's
-  // duration after the phase has already moved on; heroExiting/resultEntering just drive the
-  // CSS transforms.
   const isPostPrd = state.phase === "result" || state.phase === "converted";
-  const [showHeroSlide, setShowHeroSlide] = useState(!isPostPrd);
-  const [heroExiting, setHeroExiting] = useState(false);
-  const [resultEntering, setResultEntering] = useState(false);
 
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [draftContent, setDraftContent] = useState("");
@@ -689,57 +405,9 @@ export default function Home() {
     };
   }, []);
 
-  // Plays the placeholder headline's scramble-in once on landing (title only, not the
-  // subtitle) — the same reveal a fresh idea's title gets, just triggered by the page load
-  // itself rather than a button press. Deferred a tick so the setState isn't synchronous
-  // within the effect body.
-  useEffect(() => {
-    const id = setTimeout(() => setTitlePlay((k) => k + 1), 0);
-    return () => clearTimeout(id);
-  }, []);
-
   const signInModalRef = useModalDialog(showSignInModal, () => setShowSignInModal(false));
   const manualFormRef = useModalDialog(showManualForm, () => setShowManualForm(false));
   const exitConfirmRef = useModalDialog(showExitConfirm, () => setShowExitConfirm(false));
-
-  useEffect(() => {
-    if (isPostPrd) {
-      if (!showHeroSlide) return; // already fully transitioned, nothing to do
-      const startExit = setTimeout(() => setHeroExiting(true), 0);
-      const exitTimer = setTimeout(() => setShowHeroSlide(false), 500);
-      return () => {
-        clearTimeout(startExit);
-        clearTimeout(exitTimer);
-      };
-    }
-    // Went back to the hero (Start over) — snap instantly rather than animating a reverse slide.
-    const resetTimer = setTimeout(() => {
-      setShowHeroSlide(true);
-      setHeroExiting(false);
-    }, 0);
-    return () => clearTimeout(resetTimer);
-  }, [isPostPrd, showHeroSlide]);
-
-  useEffect(() => {
-    if (!isPostPrd) {
-      const resetTimer = setTimeout(() => setResultEntering(false), 0);
-      return () => clearTimeout(resetTimer);
-    }
-    // resultEntering is already false here — it was set (or defaulted) that way by the branch
-    // above during every render where isPostPrd was false, which is always true immediately
-    // before this transition. Mounts off-screen (translate-x-full, see the JSX below) for one
-    // paint, then flips to trigger the CSS transition on the next frame — flipping both in the
-    // same tick would skip straight to the end state with no animation, since the browser needs
-    // a committed "before" frame.
-    let raf2 = 0;
-    const raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => setResultEntering(true));
-    });
-    return () => {
-      cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
-    };
-  }, [isPostPrd]);
 
   async function submitPrompt(promptText: string, hintOverrides?: Partial<ReturnType<typeof hints>>) {
     if (!promptText.trim()) return;
@@ -761,11 +429,14 @@ export default function Home() {
       if (data.needsClarification) {
         setState({ phase: "clarifying", question: data.clarifyingQuestion, submitting: false });
         setShowManualForm(false);
+        setRollerOpen(false);
         return;
       }
 
       setState({ phase: "result", sections: data.sections, lowConfidence: data.lowConfidence });
       setShowManualForm(false);
+      setRollerOpen(false);
+      window.scrollTo({ top: 0 });
       setSelectedSectionKey(null);
       setActiveSlide("prd");
     } catch {
@@ -821,6 +492,7 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     const promptText = applyIdeaToPromptState({ title, targetUser, description, platformTag });
     window.history.replaceState(null, "", window.location.pathname);
+    setRollerOpen(true);
     void submitPrompt(promptText, { platform: platformTag });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time URL consumption on mount, guarded by the ref above
   }, []);
@@ -857,6 +529,7 @@ export default function Home() {
     setIdea(null);
     setIdeaError(null);
     setShowManualForm(false);
+    setRollerOpen(false);
     setState({ phase: "idle" });
     setEditingKey(null);
     setDraftContent("");
@@ -1164,6 +837,7 @@ export default function Home() {
   }
 
   async function generateIdea() {
+    setDrawNumber((n) => n + 1);
     setIdeaLoading(true);
     setIdeaError(null);
     try {
@@ -1174,8 +848,6 @@ export default function Home() {
         return;
       }
       setIdea(data);
-      setScrambleKey((k) => k + 1);
-      setTitlePlay((k) => k + 1);
     } catch {
       setIdeaError("Network error — please try again.");
     } finally {
@@ -1183,180 +855,100 @@ export default function Home() {
     }
   }
 
+  function rollIdea() {
+    setRollerOpen(true);
+    void generateIdea();
+  }
+
   const isSubmitting = state.phase === "submitting" || (state.phase === "clarifying" && state.submitting);
+  // A rolled idea keeps its own short title; a hand-written prompt gets its first few words.
+  const projectTitle = idea && prompt.startsWith(idea.title) ? idea.title : prompt.split(/\s+/).slice(0, 6).join(" ");
 
   return (
     <>
       <SiteNav onSignInClick={() => setShowSignInModal(true)} />
 
-      <main className="flex-1 mx-auto w-full max-w-2xl px-6 pt-20 pb-16">
-      <div className="relative">
-      {showHeroSlide && (
-        <div
-          className={`transition-transform duration-500 ease-in-out ${
-            heroExiting ? "absolute inset-0 w-full -translate-x-full" : "translate-x-0"
-          }`}
-        >
       {(state.phase === "idle" || state.phase === "submitting" || state.phase === "error") && (
-        <>
-          <div className="relative mt-8 pb-40 text-center">
-            <Watermark />
-
-            <div className="relative z-10">
-              <p className="text-base font-medium text-neutral-500 dark:text-neutral-400">
-                {idea || ideaLoading ? "Your next app" : "Stuck on what to build?"}
-              </p>
-
-              <h2 className="mt-3 whitespace-nowrap text-2xl sm:text-4xl md:text-5xl font-bold tracking-tight">
-                <TextScramble
-                  text={idea ? idea.title : "random"}
-                  prefix="Generate one at "
-                  hidePrefix={!!idea || ideaLoading}
-                  play={titlePlay}
-                  loading={ideaLoading}
-                />
-              </h2>
-              <p className="mt-3 text-base sm:text-lg text-neutral-500 dark:text-neutral-400">
-                <TextScramble
-                  text={idea ? idea.targetUser : PLACEHOLDER_TARGET}
-                  play={scrambleKey}
-                  loading={ideaLoading}
-                />
-              </p>
-
-              {idea && (
-                <div className="mt-6 flex flex-col items-center gap-3">
-                  <span className="inline-block rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs uppercase tracking-wide text-neutral-500">
-                    <TextScramble text={idea.platformTag} play={scrambleKey} loading={ideaLoading} />
-                  </span>
-                  <p className="mx-auto max-w-prose text-base text-neutral-700 dark:text-neutral-300">
-                    <TextScramble text={idea.description} play={scrambleKey} loading={ideaLoading} />
-                  </p>
-                </div>
-              )}
-
-              {/* A visible shuffle is distracting to announce frame-by-frame — screen readers get
-                  just the loading state and the final landed idea. */}
-              <p className="sr-only" role="status" aria-live="polite">
-                {ideaLoading && "Generating an idea…"}
-                {idea && !ideaLoading && `Idea: ${idea.title}, ${idea.targetUser}. ${idea.description}`}
-              </p>
-
-              <div className="mt-8 flex flex-wrap items-center justify-center gap-x-4 gap-y-4">
-                {!idea && (
-                  <button
-                    type="button"
-                    onClick={generateIdea}
-                    disabled={ideaLoading || isSubmitting}
-                    className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-5 py-2.5 text-base font-medium disabled:opacity-50"
-                  >
-                    {ideaLoading ? "Generating…" : "Generate an app idea"}
-                  </button>
-                )}
-
-                {idea && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={startPrdFromIdea}
-                      disabled={isSubmitting}
-                      className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-5 py-2.5 text-base font-medium disabled:opacity-50"
-                    >
-                      {isSubmitting ? (
-                        <>
-                          Generating
-                          <LoadingDots />
-                        </>
-                      ) : (
-                        "Generate PRD"
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={generateIdea}
-                      disabled={ideaLoading || isSubmitting}
-                      className="rounded-md border border-neutral-300 dark:border-neutral-700 px-5 py-2.5 text-base font-medium disabled:opacity-50"
-                    >
-                      {ideaLoading ? "Generating…" : "Regenerate"}
-                    </button>
-                  </>
-                )}
-
-                {!showManualForm && (
-                  <button
-                    type="button"
-                    onClick={() => setShowManualForm(true)}
-                    className="text-base text-neutral-500 dark:text-neutral-400 underline underline-offset-2 hover:text-neutral-900 dark:hover:text-neutral-100"
-                  >
-                    or describe your own idea →
-                  </button>
-                )}
-              </div>
-
-              {ideaError && (
-                <p className="mt-3 text-base text-red-600 dark:text-red-400" role="status" aria-live="polite">
-                  {ideaError}
-                </p>
-              )}
-
-              <p className="mt-4 text-base" role="status" aria-live="polite">
-                {state.phase === "error" && <span className="text-red-600 dark:text-red-400">{state.message}</span>}
-              </p>
-            </div>
-          </div>
-        </>
+        <Hero
+          onRoll={rollIdea}
+          onWriteOwn={() => setShowManualForm(true)}
+          lastIdea={rollerOpen ? null : idea}
+          onReopen={() => setRollerOpen(true)}
+          disabled={ideaLoading || isSubmitting}
+          error={!rollerOpen && !showManualForm && state.phase === "error" ? state.message : null}
+        />
       )}
 
       {state.phase === "clarifying" && (
-        <form onSubmit={handleClarify} className="mt-8 space-y-4" aria-busy={state.submitting}>
-          <p className="text-sm font-medium">{state.question}</p>
-          <label htmlFor={answerId} className="sr-only">
-            Your answer
-          </label>
-          <textarea
-            id={answerId}
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-            required
-            rows={3}
-            disabled={state.submitting}
-            className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
-          />
-          <button
-            type="submit"
-            disabled={state.submitting || !answer.trim()}
-            className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium disabled:opacity-50"
+        <main className="relative mx-auto flex min-h-[100svh] w-full max-w-3xl flex-col justify-center px-5 pb-20 pt-32 sm:px-8">
+          <motion.form
+            onSubmit={handleClarify}
+            aria-busy={state.submitting}
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: EASE }}
           >
-            {state.submitting ? "Generating…" : "Continue"}
-          </button>
-          <p className="text-sm" role="status" aria-live="polite">
-            {state.submitting && "Generating your PRD…"}
-          </p>
-        </form>
-      )}
-        </div>
+            <Kicker>One quick question</Kicker>
+            <p className="mt-5 font-display text-4xl uppercase leading-[0.95] sm:text-6xl">{state.question}</p>
+            <label htmlFor={answerId} className="sr-only">
+              Your answer
+            </label>
+            <textarea
+              id={answerId}
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value)}
+              required
+              rows={3}
+              disabled={state.submitting}
+              placeholder="Type your answer…"
+              className="mt-8 w-full rounded-2xl border border-line bg-surface px-5 py-4 text-lg placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <button
+              type="submit"
+              disabled={state.submitting || !answer.trim()}
+              className="group mt-5 inline-flex items-center gap-2 rounded-full bg-accent px-7 py-4 text-base font-semibold text-accent-ink transition-transform hover:scale-[1.03] active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
+            >
+              {state.submitting ? (
+                <>
+                  Writing the spec
+                  <LoadingDots />
+                </>
+              ) : (
+                <>
+                  Continue
+                  <span className="transition-transform group-hover:translate-x-1" aria-hidden="true">
+                    →
+                  </span>
+                </>
+              )}
+            </button>
+            <p className="sr-only" role="status" aria-live="polite">
+              {state.submitting && "Generating your PRD…"}
+            </p>
+          </motion.form>
+        </main>
       )}
 
       {isPostPrd && (
-        <div
-          className={`transition-transform duration-500 ease-in-out ${
-            resultEntering ? "translate-x-0" : "translate-x-full"
-          }`}
-        >
+        <main className="relative mx-auto w-full max-w-4xl flex-1 px-5 pb-24 pt-32 sm:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 48 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.9, ease: EASE, delay: 0.25 }}
+          >
       {state.phase === "result" && (
         <div className="mt-8 space-y-6">
           {sessionTtlSeconds !== null && sessionTtlSeconds < TIMEOUT_WARNING_THRESHOLD_SECONDS ? (
-            <div className="rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+            <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
               <p role="status" aria-live="polite">
-                Your session expires in {formatDuration(sessionTtlSeconds)} due to inactivity —{" "}
-                {isSignedIn ? "this project isn't saved to your account yet." : "guest work isn't saved."}
+                Session ends in {formatDuration(sessionTtlSeconds)} — {isSignedIn ? "not saved to your account yet." : "guest work isn't saved."}
               </p>
               <div className="mt-2 flex gap-3">
                 <button
                   type="button"
                   onClick={keepWorking}
                   disabled={keepingWorking}
-                  className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+                  className="rounded-full bg-accent text-accent-ink font-semibold transition-transform hover:scale-[1.03] active:scale-95 disabled:hover:scale-100 px-3 py-1.5 text-xs font-medium disabled:opacity-50"
                 >
                   {keepingWorking ? "Refreshing…" : "Keep working"}
                 </button>
@@ -1373,35 +965,35 @@ export default function Home() {
             </div>
           ) : (
             <div className="flex items-start justify-between gap-3">
-              <div className="text-xs text-neutral-500">
+              <div className="text-xs text-muted">
                 <p>
                   {isSignedIn ? (
-                    <>This project isn&apos;t saved to your account yet.{" "}</>
+                    <>Not saved yet.{" "}</>
                   ) : (
-                    <>Guest session — your work isn&apos;t saved.{" "}</>
+                    <>Guest session · not saved.{" "}</>
                   )}
                   <button
                     type="button"
                     onClick={saveOrSignUp}
                     disabled={boilerplateJobActive || savingProject}
                     title={boilerplateJobActive ? "Wait for boilerplate generation to finish first" : undefined}
-                    className="underline disabled:no-underline disabled:opacity-50"
+                    className="font-medium text-accent underline underline-offset-2 disabled:no-underline disabled:opacity-50"
                   >
                     {isSignedIn ? (savingProject ? "Saving…" : "Save to my account") : "Sign up to save"}
                   </button>
-                  {boilerplateJobActive && ` (available once boilerplate generation finishes)`}
+                  {boilerplateJobActive && ` (after boilerplate finishes)`}
                 </p>
-                {saveProjectError && <p className="mt-1 text-red-600 dark:text-red-400">{saveProjectError}</p>}
+                {saveProjectError && <p className="mt-1 text-red-400">{saveProjectError}</p>}
               </div>
               <button
                 type="button"
                 onClick={requestStartOver}
-                className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:underline"
+                className="group inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent"
               >
                 Start over
                 <svg
                   viewBox="0 0 24 24"
-                  className="h-3 w-3"
+                  className="h-3 w-3 transition-transform duration-500 group-hover:-rotate-180"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
@@ -1416,6 +1008,36 @@ export default function Home() {
             </div>
           )}
 
+          <div>
+            <Kicker>Your project</Kicker>
+            <h1 className="mt-4 line-clamp-3 font-display text-5xl uppercase leading-[0.9] sm:text-7xl">{projectTitle}</h1>
+            <div className="mt-8 inline-flex rounded-full border border-line p-1 font-mono text-[11px] uppercase tracking-[0.2em]" role="group" aria-label="Project step">
+              {(["prd", "stack"] as const).map((slide) => {
+                const active = activeSlide === slide;
+                return (
+                  <button
+                    key={slide}
+                    type="button"
+                    onClick={() => setActiveSlide(slide)}
+                    aria-pressed={active}
+                    className="relative rounded-full px-4 py-2"
+                  >
+                    {active && (
+                      <motion.span
+                        layoutId="active-slide-pill"
+                        className="absolute inset-0 rounded-full bg-accent"
+                        transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                      />
+                    )}
+                    <span className={`relative transition-colors ${active ? "text-accent-ink" : "text-muted hover:text-foreground"}`}>
+                      {slide === "prd" ? "01 Spec" : "02 Stack & code"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="relative overflow-hidden">
             <div
               className={`space-y-6 transition-transform duration-500 ease-in-out ${
@@ -1424,31 +1046,29 @@ export default function Home() {
               inert={activeSlide !== "prd"}
             >
           {state.lowConfidence && (
-            <div className="rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
-              This PRD is low-confidence — the idea was still pretty thin after clarification. Worth reviewing closely before generating a stack.
+            <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
+              Thin idea — review this spec closely before picking a stack.
             </div>
           )}
           {sectionError && (
-            <p className="text-sm text-red-600 dark:text-red-400" role="status" aria-live="polite">
+            <p className="text-sm text-red-400" role="status" aria-live="polite">
               {sectionError}
             </p>
           )}
 
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
-              Product Requirements
-            </p>
+            <h2 className="font-display text-4xl uppercase leading-none">The spec</h2>
             <div
-              className={`mt-3 flex w-full flex-col sm:flex-row overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] transition-all duration-300 ease-in-out ${
-                selectedSection ? "sm:ml-0 sm:w-full" : "sm:ml-[calc((100%_-_14rem)/2)] sm:w-56"
+              className={`mt-3 flex w-full flex-col sm:flex-row overflow-hidden rounded-2xl border border-line bg-surface transition-all duration-300 ease-in-out ${
+                selectedSection ? "sm:w-full" : "sm:w-72"
               }`}
             >
               <div
-                className={`w-full sm:w-56 shrink-0 divide-y divide-neutral-200 dark:divide-neutral-800 ${
-                  selectedSection ? "border-b sm:border-b-0 sm:border-r border-neutral-200 dark:border-neutral-800" : ""
+                className={`w-full sm:w-72 shrink-0 divide-y divide-line ${
+                  selectedSection ? "border-b sm:border-b-0 sm:border-r border-line" : ""
                 }`}
               >
-                {state.sections.map((section) => {
+                {state.sections.map((section, index) => {
                   const isSelected = selectedSectionKey === section.key;
                   return (
                     <button
@@ -1456,17 +1076,18 @@ export default function Home() {
                       type="button"
                       onClick={() => selectSection(section.key)}
                       aria-pressed={isSelected}
-                      className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium transition-colors ${
+                      style={{ animationDelay: `${500 + index * 70}ms` }}
+                      className={`flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm font-medium transition-colors [animation:fade-in-up_0.5s_ease-out_backwards] ${
                         isSelected
-                          ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
-                          : "hover:bg-neutral-100 dark:hover:bg-white/[0.04]"
+                          ? "bg-accent text-accent-ink"
+                          : "hover:bg-white/[0.04]"
                       }`}
                     >
                       <span
                         className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
                           isSelected
-                            ? "bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100"
-                            : "bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900"
+                            ? "bg-accent-ink text-accent"
+                            : "bg-accent text-accent-ink"
                         }`}
                       >
                         {getSectionIcon(section.key)}
@@ -1493,7 +1114,7 @@ export default function Home() {
                           type="button"
                           onClick={() => startEdit(selectedSection)}
                           disabled={anySectionBusy}
-                          className="rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-white/10 disabled:opacity-50"
+                          className="rounded-full border border-line px-3 py-1 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
                         >
                           Edit
                         </button>
@@ -1501,7 +1122,7 @@ export default function Home() {
                           type="button"
                           onClick={() => regenerateSection(selectedSection.key)}
                           disabled={anySectionBusy}
-                          className="rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-white/10 disabled:opacity-50"
+                          className="rounded-full border border-line px-3 py-1 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
                         >
                           {isSelectedBusy ? "Regenerating…" : "Regenerate"}
                         </button>
@@ -1520,14 +1141,14 @@ export default function Home() {
                         onChange={(e) => setDraftContent(e.target.value)}
                         rows={4}
                         disabled={isSelectedBusy}
-                        className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+                        className="w-full rounded-xl border border-line bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                       />
                       <div className="flex gap-2">
                         <button
                           type="button"
                           onClick={() => saveEdit(selectedSection.key)}
                           disabled={isSelectedBusy || !draftContent.trim()}
-                          className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                          className="rounded-full bg-accent text-accent-ink font-semibold transition-transform hover:scale-[1.03] active:scale-95 disabled:hover:scale-100 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
                         >
                           {isSelectedBusy ? "Saving…" : "Save"}
                         </button>
@@ -1535,14 +1156,14 @@ export default function Home() {
                           type="button"
                           onClick={cancelEdit}
                           disabled={isSelectedBusy}
-                          className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                          className="rounded-full border border-line transition-colors hover:border-accent hover:text-accent px-3 py-1.5 text-sm font-medium disabled:opacity-50"
                         >
                           Cancel
                         </button>
                       </div>
                     </div>
                   ) : (
-                    <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-600 dark:text-neutral-400">
+                    <p className="mt-2 whitespace-pre-wrap text-sm text-muted">
                       {isSelectedBusy ? "Regenerating…" : selectedSection.content}
                     </p>
                   )}
@@ -1554,11 +1175,12 @@ export default function Home() {
           <button
             type="button"
             onClick={() => setActiveSlide("stack")}
-            className={`rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium transition-all duration-300 ease-in-out ${
-              selectedSection ? "sm:ml-0" : "sm:ml-[calc((100%_-_14rem)/2)]"
-            }`}
+            className="group inline-flex items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-accent-ink transition-transform hover:scale-[1.03] active:scale-95"
           >
-            Continue to Tech Stack →
+            Next: the stack
+            <span className="transition-transform group-hover:translate-x-1" aria-hidden="true">
+              →
+            </span>
           </button>
             </div>
 
@@ -1568,23 +1190,15 @@ export default function Home() {
               }`}
               inert={activeSlide !== "stack"}
             >
-          <button
-            type="button"
-            onClick={() => setActiveSlide("prd")}
-            className="text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:underline hover:text-neutral-900 dark:hover:text-white"
-          >
-            ← Back to PRD
-          </button>
-
-          <div className="border-t border-neutral-200 dark:border-neutral-800 pt-6">
+          <div>
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-xl font-semibold">Tech Stack</h2>
+              <h2 className="font-display text-4xl uppercase leading-none">The stack</h2>
               {stack && (
                 <button
                   type="button"
                   onClick={generateStack}
                   disabled={stackLoading}
-                  className="text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:underline disabled:opacity-50"
+                  className="text-xs font-medium text-muted hover:underline disabled:opacity-50"
                 >
                   {stackLoading ? "Regenerating…" : "Regenerate stack"}
                 </button>
@@ -1597,13 +1211,13 @@ export default function Home() {
               (e.g. "I know FastAPI") once a PRD already exists. Editable here too, and sent on
               every generate/regenerate.
             */}
-            <div className="mt-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] p-4">
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                Prefilled from your answers above — adjust these to refine the stack recommendation.
+            <div className="mt-3 rounded-2xl border border-line bg-surface p-4">
+              <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-muted">
+                Tune the pick
               </p>
               <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label htmlFor={platformId} className="block text-xs font-medium text-neutral-600 dark:text-neutral-400">
+                  <label htmlFor={platformId} className="block text-xs font-medium text-muted">
                     Platform
                   </label>
                   <select
@@ -1611,7 +1225,7 @@ export default function Home() {
                     value={platform}
                     onChange={(e) => setPlatform(e.target.value as PlatformHint | "")}
                     disabled={stackLoading}
-                    className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+                    className="mt-1 w-full rounded-xl border border-line bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                   >
                     <option value="" className={OPTION_CLASS}>No preference</option>
                     <option value="web" className={OPTION_CLASS}>Web</option>
@@ -1619,7 +1233,7 @@ export default function Home() {
                   </select>
                 </div>
                 <div>
-                  <label htmlFor={scopeId} className="block text-xs font-medium text-neutral-600 dark:text-neutral-400">
+                  <label htmlFor={scopeId} className="block text-xs font-medium text-muted">
                     Scope
                   </label>
                   <select
@@ -1627,7 +1241,7 @@ export default function Home() {
                     value={scopeSize}
                     onChange={(e) => setScopeSize(e.target.value as ScopeSizeHint | "")}
                     disabled={stackLoading}
-                    className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+                    className="mt-1 w-full rounded-xl border border-line bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                   >
                     <option value="" className={OPTION_CLASS}>No preference</option>
                     <option value="weekend" className={OPTION_CLASS}>Weekend project</option>
@@ -1636,7 +1250,7 @@ export default function Home() {
                   </select>
                 </div>
                 <div>
-                  <label htmlFor={stackId} className="block text-xs font-medium text-neutral-600 dark:text-neutral-400">
+                  <label htmlFor={stackId} className="block text-xs font-medium text-muted">
                     Stacks you know
                   </label>
                   <input
@@ -1646,20 +1260,20 @@ export default function Home() {
                     onChange={(e) => setStackFamiliarity(e.target.value)}
                     disabled={stackLoading}
                     placeholder="e.g. FastAPI, Vue"
-                    className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+                    className="mt-1 w-full rounded-xl border border-line bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                   />
                 </div>
               </div>
             </div>
 
             {stackStale && stack && (
-              <div className="mt-2 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
-                The PRD changed since this stack was generated — it may be out of date.
+              <div className="mt-2 rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
+                Spec changed since this stack was picked.
               </div>
             )}
 
             {stackError && (
-              <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="status" aria-live="polite">
+              <p className="mt-2 text-sm text-red-400" role="status" aria-live="polite">
                 {stackError}
               </p>
             )}
@@ -1669,7 +1283,7 @@ export default function Home() {
                 type="button"
                 onClick={generateStack}
                 disabled={stackLoading}
-                className="mt-3 rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium disabled:opacity-50"
+                className="mt-3 rounded-full bg-accent text-accent-ink font-semibold transition-transform hover:scale-[1.03] active:scale-95 disabled:hover:scale-100 px-4 py-2 text-sm font-medium disabled:opacity-50"
               >
                 {stackLoading ? "Generating…" : "Generate Tech Stack"}
               </button>
@@ -1684,15 +1298,15 @@ export default function Home() {
                   return (
                     <div
                       key={key}
-                      className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] p-4 [animation:fade-in-up_0.3s_ease-out_backwards]"
+                      className="rounded-2xl border border-line bg-surface p-4 [animation:fade-in-up_0.3s_ease-out_backwards]"
                       style={{ animationDelay: `${index * 60}ms` }}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2">
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-accent-ink">
                             {getStackCategoryIcon(key)}
                           </span>
-                          <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
                             {label}
                           </h3>
                         </div>
@@ -1701,7 +1315,7 @@ export default function Home() {
                             type="button"
                             onClick={() => startOverride(key, piece.choice)}
                             disabled={stackLoading}
-                            className="rounded-full border border-neutral-300 dark:border-neutral-700 px-2 py-0.5 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-white/10 disabled:opacity-50"
+                            className="rounded-full border border-line px-3 py-1 text-xs font-medium text-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
                           >
                             Override
                           </button>
@@ -1720,7 +1334,7 @@ export default function Home() {
                             value={overrideChoice}
                             onChange={(e) => setOverrideChoice(e.target.value)}
                             disabled={stackLoading}
-                            className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+                            className="w-full rounded-xl border border-line bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                           />
                           <datalist id={`${stackOverrideId}-${key}-options`}>
                             {STACK_ALTERNATIVES[key].map((alt) => (
@@ -1732,7 +1346,7 @@ export default function Home() {
                               type="button"
                               onClick={() => saveOverride(key)}
                               disabled={stackLoading || !overrideChoice.trim()}
-                              className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                              className="rounded-full bg-accent text-accent-ink font-semibold transition-transform hover:scale-[1.03] active:scale-95 disabled:hover:scale-100 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
                             >
                               {stackLoading ? "Saving…" : "Save"}
                             </button>
@@ -1740,7 +1354,7 @@ export default function Home() {
                               type="button"
                               onClick={cancelOverride}
                               disabled={stackLoading}
-                              className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                              className="rounded-full border border-line transition-colors hover:border-accent hover:text-accent px-3 py-1.5 text-sm font-medium disabled:opacity-50"
                             >
                               Cancel
                             </button>
@@ -1749,7 +1363,7 @@ export default function Home() {
                       ) : (
                         <>
                           <p className="mt-2 text-sm font-medium">{piece.choice}</p>
-                          <p className="mt-0.5 text-sm text-neutral-600 dark:text-neutral-400">{piece.rationale}</p>
+                          <p className="mt-0.5 text-sm text-muted">{piece.rationale}</p>
                         </>
                       )}
                     </div>
@@ -1760,17 +1374,17 @@ export default function Home() {
           </div>
 
           {stack && (
-            <div className="border-t border-neutral-200 dark:border-neutral-800 pt-6">
-              <h2 className="text-xl font-semibold">Boilerplate</h2>
+            <div className="border-t border-line pt-8">
+              <h2 className="font-display text-4xl uppercase leading-none">The code</h2>
 
               {boilerplateStale && boilerplateJobState === "succeeded" && (
-                <div className="mt-2 rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
-                  The stack changed since this boilerplate was generated — it may be out of date.
+                <div className="mt-2 rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
+                  Stack changed since this was generated.
                 </div>
               )}
 
               {boilerplateError && (
-                <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="status" aria-live="polite">
+                <p className="mt-2 text-sm text-red-400" role="status" aria-live="polite">
                   {boilerplateError}
                 </p>
               )}
@@ -1781,7 +1395,7 @@ export default function Home() {
                   different content that was otherwise just cutting into view with no transition. */}
               <div key={boilerplateJobActive ? "active" : boilerplateJobState} className="[animation:slide-in-right_0.3s_ease-out]">
                 {prompt && (
-                  <p className="mt-1 truncate text-sm text-neutral-500 dark:text-neutral-400" title={prompt}>
+                  <p className="mt-1 truncate text-sm text-muted" title={prompt}>
                     {prompt}
                   </p>
                 )}
@@ -1790,7 +1404,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={generateBoilerplate}
-                    className="mt-3 rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium"
+                    className="mt-3 rounded-full bg-accent text-accent-ink font-semibold transition-transform hover:scale-[1.03] active:scale-95 disabled:hover:scale-100 px-4 py-2 text-sm font-medium"
                   >
                     Generate Boilerplate
                   </button>
@@ -1798,9 +1412,9 @@ export default function Home() {
 
                 {boilerplateJobActive && (
                   <div className="mt-3">
-                    <div className="h-2 w-full rounded-full bg-neutral-200 dark:bg-neutral-800 overflow-hidden">
+                    <div className="h-1.5 w-full rounded-full bg-line overflow-hidden">
                       <div
-                        className="h-full bg-neutral-900 dark:bg-neutral-100 transition-all"
+                        className="h-full bg-accent transition-all duration-700"
                         style={{ width: `${boilerplateProgress}%` }}
                       />
                     </div>
@@ -1814,7 +1428,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={retryBoilerplate}
-                    className="mt-3 rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium"
+                    className="mt-3 rounded-full border border-line transition-colors hover:border-accent hover:text-accent px-4 py-2 text-sm font-medium"
                   >
                     Retry
                   </button>
@@ -1826,21 +1440,21 @@ export default function Home() {
                       <p
                         className={
                           boilerplateUnvalidated
-                            ? "min-w-0 text-sm text-amber-700 dark:text-amber-400"
-                            : "min-w-0 text-sm text-green-700 dark:text-green-400"
+                            ? "min-w-0 text-sm text-amber-300"
+                            : "min-w-0 text-sm text-accent"
                         }
                       >
                         {boilerplateUnvalidated
-                          ? "Boilerplate generated — no Python interpreter was available to check it, review before running."
+                          ? "Generated — unchecked (no Python found). Review before running."
                           : boilerplateWebContainerCompatible === false
-                            ? "Boilerplate generated (Python syntax checked)."
+                            ? "Generated · Python syntax checked."
                             : boilerplateBuildVerified
-                              ? "Boilerplate generated and verified — Live Preview confirmed it builds and runs."
-                              : "Boilerplate generated (syntax-checked) — open Live Preview to confirm it actually builds and runs."}
+                              ? "Generated · verified running in Live Preview."
+                              : "Generated · syntax-checked. Open Live Preview to run it."}
                       </p>
                       <a
                         href="/api/boilerplate/download"
-                        className="shrink-0 whitespace-nowrap rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium"
+                        className="shrink-0 whitespace-nowrap rounded-full bg-accent text-accent-ink font-semibold transition-transform hover:scale-[1.03] active:scale-95 disabled:hover:scale-100 px-4 py-2 text-sm font-medium"
                       >
                         Download zip
                       </a>
@@ -1849,14 +1463,14 @@ export default function Home() {
                           href={`/preview/${boilerplateJobId}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="shrink-0 whitespace-nowrap rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium"
+                          className="shrink-0 whitespace-nowrap rounded-full border border-line transition-colors hover:border-accent hover:text-accent px-4 py-2 text-sm font-medium"
                         >
                           {boilerplateWebContainerCompatible === false ? "View files" : "Live Preview"}
                         </a>
                       )}
                     </div>
                     {boilerplateWebContainerCompatible === false && (
-                      <p className="text-xs text-neutral-500">
+                      <p className="text-xs text-muted">
                         Live preview isn&apos;t available for this stack — download the zip and run it locally (see
                         the included README for the exact command).
                       </p>
@@ -1865,7 +1479,7 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={generateBoilerplate}
-                        className="text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:underline"
+                        className="text-xs font-medium text-muted hover:underline"
                       >
                         Regenerate
                       </button>
@@ -1878,117 +1492,122 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Same watermark, same size, as the hero's — placed here (peeking out below the PRD
-              box / Tech Stack cards, same as it peeks out below the hero's own headline/CTA
-              block) rather than above them, so it doesn't just sit right under the header with
-              barely any content above it. Kept outside the slide switcher above: that switcher
-              needs its own overflow-hidden to clip the inactive slide during the transform, and
-              an overflow-hidden ancestor would clip the watermark's own full-bleed breakout too. */}
-          <div className="relative pb-40">
-            <Watermark />
-          </div>
         </div>
       )}
 
       {state.phase === "converted" && (
-        <div className="mt-8 space-y-6">
-          <div className="rounded-md border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950 px-4 py-3 text-sm text-emerald-900 dark:text-emerald-200">
-            Saved to your account.
+        <div className="mt-2">
+          <div className="flex items-center gap-4">
+            <motion.span
+              initial={{ scale: 0, rotate: -90 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ type: "spring", stiffness: 260, damping: 14, delay: 0.3 }}
+              className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-accent text-accent-ink"
+            >
+              <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <motion.polyline
+                  points="4 12 9 17 20 6"
+                  initial={{ pathLength: 0 }}
+                  animate={{ pathLength: 1 }}
+                  transition={{ duration: 0.5, delay: 0.6, ease: EASE }}
+                />
+              </svg>
+            </motion.span>
+            <h1 className="font-display text-7xl uppercase leading-none sm:text-8xl">Saved.</h1>
           </div>
 
-          <div>
-            <h2 className="text-lg font-semibold">Your idea</h2>
-            <p className="text-sm text-neutral-700 dark:text-neutral-300">{state.prompt}</p>
+          <p className="mt-8 max-w-2xl text-lg text-muted">{state.prompt}</p>
+
+          <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {state.sections.length > 0 && (
+              <div className="rounded-2xl border border-line bg-surface p-6">
+                <Kicker>Spec</Kicker>
+                <ul className="mt-4 space-y-2 text-sm">
+                  {state.sections.map((section, i) => (
+                    <li
+                      key={section.key}
+                      className="flex items-center gap-3 [animation:fade-in-up_0.5s_ease-out_backwards]"
+                      style={{ animationDelay: `${400 + i * 60}ms` }}
+                    >
+                      <span className="text-accent">{getSectionIcon(section.key)}</span>
+                      {section.title}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {state.stack && (
+              <div className="rounded-2xl border border-line bg-surface p-6">
+                <Kicker>Stack</Kicker>
+                <ul className="mt-4 space-y-2 text-sm">
+                  {STACK_CATEGORIES.map(({ key, label }, i) => (
+                    <li
+                      key={key}
+                      className="flex items-center justify-between gap-3 [animation:fade-in-up_0.5s_ease-out_backwards]"
+                      style={{ animationDelay: `${400 + i * 60}ms` }}
+                    >
+                      <span className="text-muted">{label}</span>
+                      <span className="font-medium">{state.stack![key].choice}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
-
-          {state.sections.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold">PRD sections</h2>
-              <ul className="mt-2 list-disc list-inside text-sm text-neutral-700 dark:text-neutral-300">
-                {state.sections.map((section) => (
-                  <li key={section.key}>{section.title}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {state.stack && (
-            <div>
-              <h2 className="text-lg font-semibold">Tech stack</h2>
-              <ul className="mt-2 text-sm text-neutral-700 dark:text-neutral-300 space-y-1">
-                {STACK_CATEGORIES.map(({ key, label }) => (
-                  <li key={key}>
-                    <span className="font-medium">{label}:</span> {state.stack![key].choice}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
 
           {state.hasBoilerplate && (
-            <p className="text-sm text-neutral-600 dark:text-neutral-400">
-              A generated boilerplate was saved with this project too. If you&apos;ve turned on GitHub auto-push in{" "}
-              <a href="/account" className="underline">
-                account settings
+            <p className="mt-6 text-sm text-muted">
+              Boilerplate saved too. With GitHub auto-push on in{" "}
+              <a href="/account" className="text-accent underline underline-offset-2">
+                your account
               </a>
-              , a repo is being created for it now.
+              , its repo is being created now.
             </p>
           )}
-
-          <p className="text-xs text-neutral-500">
-            Full editing and a project dashboard for signed-in accounts are coming soon — for now,{" "}
-            <a href="/account" className="underline">
-              your account page
-            </a>{" "}
-            confirms you&apos;re signed in.
-          </p>
 
           <button
             type="button"
             onClick={startOver}
-            className="rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium"
+            className="group mt-10 inline-flex items-center gap-2 rounded-full bg-accent px-7 py-4 text-base font-semibold text-accent-ink transition-transform hover:scale-[1.03] active:scale-95"
           >
-            Start a new project
+            Roll a new one
+            <span className="transition-transform group-hover:translate-x-1" aria-hidden="true">
+              →
+            </span>
           </button>
         </div>
       )}
-        </div>
+          </motion.div>
+        </main>
       )}
-      </div>
-      </main>
 
-      <section id="about" className="mx-auto w-full max-w-5xl px-6 sm:px-12 py-24 border-t border-neutral-200 dark:border-neutral-800">
-        <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">About</p>
-        <h2 className="mt-4 text-2xl sm:text-3xl font-bold tracking-tight">From a blank page to a running project</h2>
-        <p className="mt-4 text-neutral-600 dark:text-neutral-400 max-w-prose">
-          What To Do? turns a single idea into something you can actually run. No account required to try it.
-        </p>
-
-        <ol className="mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-10 gap-y-10">
-          {ABOUT_STEPS.map((step, i) => (
-            <li key={step.title} className="border-t border-neutral-200 dark:border-neutral-800 pt-4">
-              <span className="text-xs font-mono text-neutral-400 dark:text-neutral-600">
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <p className="mt-2 font-semibold">{step.title}</p>
-              <p className="mt-1.5 text-sm text-neutral-600 dark:text-neutral-400">{step.body}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
+      <HowItWorks />
 
       <CliSection />
 
       <CapabilitiesSection />
 
-      <section id="faq" className="mx-auto w-full max-w-5xl px-6 sm:px-12 py-24 border-t border-neutral-200 dark:border-neutral-800">
-        <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">FAQ</p>
-        <h2 className="mt-4 text-2xl sm:text-3xl font-bold tracking-tight">Common questions, answered</h2>
-
-        <FaqAccordion items={FAQ_ITEMS} />
-      </section>
+      <Faq />
 
       <Footer />
+
+      <IdeaRoller
+        open={rollerOpen}
+        loading={ideaLoading}
+        idea={idea}
+        drawNumber={drawNumber}
+        error={ideaError}
+        building={isSubmitting}
+        buildError={state.phase === "error" ? state.message : null}
+        onReroll={generateIdea}
+        onBuild={startPrdFromIdea}
+        onClose={closeRoller}
+        onWriteOwn={() => {
+          setRollerOpen(false);
+          setShowManualForm(true);
+        }}
+      />
 
       {showSignInModal && (
         <div
@@ -2003,7 +1622,7 @@ export default function Home() {
             aria-modal="true"
             aria-labelledby="sign-in-modal-title"
             tabIndex={-1}
-            className="w-full max-w-sm rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl outline-none"
+            className="w-full max-w-sm rounded-3xl border border-line bg-surface p-6 shadow-2xl outline-none"
           >
             <div className="flex items-start justify-between gap-4">
               <h2 id="sign-in-modal-title" className="text-lg font-semibold">
@@ -2013,7 +1632,7 @@ export default function Home() {
                 type="button"
                 onClick={() => setShowSignInModal(false)}
                 aria-label="Close"
-                className="rounded-full p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-white/10 dark:hover:text-white"
+                className="rounded-full p-1.5 text-muted transition-colors hover:bg-white/10 hover:text-accent"
               >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
@@ -2021,7 +1640,7 @@ export default function Home() {
               </button>
             </div>
 
-            <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+            <p className="mt-2 text-sm text-muted">
               Save projects past your guest session, push generated code to GitHub, and get a higher generation
               limit.
             </p>
@@ -2030,7 +1649,7 @@ export default function Home() {
               type="button"
               onClick={handleSignUpClick}
               disabled={boilerplateJobActive}
-              className="mt-5 flex w-full items-center justify-center gap-2 rounded-md bg-neutral-900 dark:bg-neutral-100 px-4 py-2.5 text-sm font-medium text-white dark:text-neutral-900 disabled:opacity-50"
+              className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-accent px-4 py-3 text-sm font-semibold text-accent-ink transition-transform hover:scale-[1.02] disabled:opacity-50"
             >
               <svg viewBox="0 0 24 24" className="h-4 w-4 flex-shrink-0" fill="currentColor" aria-hidden="true">
                 <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
@@ -2060,7 +1679,7 @@ export default function Home() {
             aria-modal="true"
             aria-labelledby="exit-confirm-title"
             tabIndex={-1}
-            className="w-full max-w-sm rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl outline-none"
+            className="w-full max-w-sm rounded-3xl border border-line bg-surface p-6 shadow-2xl outline-none"
           >
             <div className="flex items-start justify-between gap-4">
               <h2 id="exit-confirm-title" className="text-lg font-semibold">
@@ -2071,7 +1690,7 @@ export default function Home() {
                 onClick={() => setShowExitConfirm(false)}
                 disabled={exiting}
                 aria-label="Close"
-                className="shrink-0 rounded-full p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-white/10 dark:hover:text-white disabled:opacity-50"
+                className="shrink-0 rounded-full p-1.5 text-muted transition-colors hover:bg-white/10 hover:text-accent disabled:opacity-50"
               >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
@@ -2085,7 +1704,7 @@ export default function Home() {
               </p>
             )}
             {saveProjectError && (
-              <p className="mt-2 text-xs text-red-600 dark:text-red-400">{saveProjectError}</p>
+              <p className="mt-2 text-xs text-red-400">{saveProjectError}</p>
             )}
 
             <div className="mt-5 flex flex-wrap gap-2">
@@ -2093,7 +1712,7 @@ export default function Home() {
                 type="button"
                 onClick={saveOrSignUp}
                 disabled={boilerplateJobActive || savingProject}
-                className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3.5 py-2 text-sm font-medium disabled:opacity-50"
+                className="rounded-full border border-line transition-colors hover:border-accent hover:text-accent px-3.5 py-2 text-sm font-medium disabled:opacity-50"
               >
                 {isSignedIn ? (savingProject ? "Saving…" : "Save to my account") : "Sign up to save"}
               </button>
@@ -2101,7 +1720,7 @@ export default function Home() {
                 type="button"
                 onClick={discardAndStartOver}
                 disabled={exiting}
-                className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3.5 py-2 text-sm font-medium disabled:opacity-50"
+                className="rounded-full bg-accent text-accent-ink font-semibold transition-transform hover:scale-[1.03] active:scale-95 disabled:hover:scale-100 px-3.5 py-2 text-sm font-medium disabled:opacity-50"
               >
                 {exiting ? "Discarding…" : "Discard & start over"}
               </button>
@@ -2109,7 +1728,7 @@ export default function Home() {
                 type="button"
                 onClick={() => setShowExitConfirm(false)}
                 disabled={exiting}
-                className="text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:underline disabled:opacity-50"
+                className="text-sm font-medium text-muted hover:underline disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -2131,7 +1750,7 @@ export default function Home() {
             aria-modal="true"
             aria-labelledby="manual-form-title"
             tabIndex={-1}
-            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl outline-none [animation:slide-up-sheet_0.3s_ease-out]"
+            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-line bg-surface p-6 shadow-2xl outline-none [animation:slide-up-sheet_0.3s_ease-out]"
           >
             <div className="relative">
               <h2 id="manual-form-title" className="text-center text-lg font-semibold">
@@ -2141,7 +1760,7 @@ export default function Home() {
                 type="button"
                 onClick={() => setShowManualForm(false)}
                 aria-label="Close"
-                className="absolute right-0 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-white/10 dark:hover:text-white"
+                className="absolute right-0 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-muted transition-colors hover:bg-white/10 hover:text-accent"
               >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
@@ -2162,21 +1781,21 @@ export default function Home() {
                   rows={4}
                   disabled={isSubmitting}
                   placeholder="A tool that helps freelancers track invoices and send payment reminders..."
-                  className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+                  className="mt-1 w-full rounded-xl border border-line bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor={platformId} className="block text-sm font-medium">
-                    Platform <span className="text-neutral-500 font-normal">(optional)</span>
+                    Platform <span className="text-muted font-normal">(optional)</span>
                   </label>
                   <select
                     id={platformId}
                     value={platform}
                     onChange={(e) => setPlatform(e.target.value as PlatformHint | "")}
                     disabled={isSubmitting}
-                    className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-xl border border-line bg-background px-3 py-2 text-sm"
                   >
                     <option value="" className={OPTION_CLASS}>No preference</option>
                     <option value="web" className={OPTION_CLASS}>Web</option>
@@ -2186,14 +1805,14 @@ export default function Home() {
 
                 <div>
                   <label htmlFor={scopeId} className="block text-sm font-medium">
-                    Scope <span className="text-neutral-500 font-normal">(optional)</span>
+                    Scope <span className="text-muted font-normal">(optional)</span>
                   </label>
                   <select
                     id={scopeId}
                     value={scopeSize}
                     onChange={(e) => setScopeSize(e.target.value as ScopeSizeHint | "")}
                     disabled={isSubmitting}
-                    className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-xl border border-line bg-background px-3 py-2 text-sm"
                   >
                     <option value="" className={OPTION_CLASS}>No preference</option>
                     <option value="weekend" className={OPTION_CLASS}>Weekend project</option>
@@ -2205,7 +1824,7 @@ export default function Home() {
 
               <div>
                 <label htmlFor={stackId} className="block text-sm font-medium">
-                  Stacks you already know <span className="text-neutral-500 font-normal">(optional)</span>
+                  Stacks you already know <span className="text-muted font-normal">(optional)</span>
                 </label>
                 <input
                   id={stackId}
@@ -2214,14 +1833,14 @@ export default function Home() {
                   onChange={(e) => setStackFamiliarity(e.target.value)}
                   disabled={isSubmitting}
                   placeholder="e.g. React, Postgres"
-                  className="mt-1 w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-xl border border-line bg-background px-3 py-2 text-sm"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={isSubmitting || !prompt.trim()}
-                className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium disabled:opacity-50"
+                className="rounded-full bg-accent text-accent-ink font-semibold transition-transform hover:scale-[1.03] active:scale-95 disabled:hover:scale-100 px-4 py-2 text-sm font-medium disabled:opacity-50"
               >
                 {isSubmitting ? (
                   <>
@@ -2236,7 +1855,7 @@ export default function Home() {
               {/* The hero's own status paragraph is behind this modal's backdrop and wouldn't be
                   visible — a submit error needs its own copy here instead. */}
               {state.phase === "error" && (
-                <p className="text-sm text-red-600 dark:text-red-400" role="status" aria-live="polite">
+                <p className="text-sm text-red-400" role="status" aria-live="polite">
                   {state.message}
                 </p>
               )}

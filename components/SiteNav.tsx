@@ -103,8 +103,8 @@ export default function SiteNav({ onSignInClick }: SiteNavProps) {
   }
 
   const inactivePillClass =
-    "text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-white/10 hover:text-neutral-900 dark:hover:text-white";
-  const activePillClass = "bg-neutral-100 dark:bg-white/10 text-neutral-900 dark:text-white";
+    "text-muted hover:bg-white/10 hover:text-foreground";
+  const activePillClass = "bg-white/10 text-foreground";
 
   return (
     <>
@@ -112,8 +112,8 @@ export default function SiteNav({ onSignInClick }: SiteNavProps) {
         aria-label="Main"
         className="fixed top-0 left-0 right-0 z-50 flex justify-center pb-6 pt-[calc(1.5rem+env(safe-area-inset-top))] pointer-events-none"
       >
-        <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-neutral-200 dark:border-white/10 bg-white/80 dark:bg-neutral-900/70 backdrop-blur-xl shadow-lg p-1.5">
-          <Link href="/" className="rounded-full px-4 py-2 hover:bg-neutral-100 dark:hover:bg-white/10">
+        <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-line bg-surface/70 backdrop-blur-xl shadow-lg shadow-black/40 p-1.5 [animation:fade-in-up_0.8s_cubic-bezier(0.16,1,0.3,1)_0.2s_backwards]">
+          <Link href="/" className="rounded-full px-4 py-2 hover:bg-white/10">
             {/* Logo.png is a black mark on a transparent background — dark:invert flips it to
                 white for this app's forced-dark theme (see globals.css) while still degrading
                 correctly if that forcing were ever relaxed back to following the OS preference. */}
@@ -158,8 +158,8 @@ export default function SiteNav({ onSignInClick }: SiteNavProps) {
                 aria-current={showAccountModal ? "true" : undefined}
                 className={`rounded-full px-4 py-2 text-sm font-bold transition-colors ${
                   showAccountModal
-                    ? "bg-neutral-700 dark:bg-neutral-200 text-white dark:text-neutral-900"
-                    : "bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:bg-neutral-700 dark:hover:bg-neutral-200"
+                    ? "bg-accent/80 text-accent-ink"
+                    : "bg-accent text-accent-ink hover:scale-105"
                 }`}
               >
                 Account
@@ -169,7 +169,7 @@ export default function SiteNav({ onSignInClick }: SiteNavProps) {
             <button
               type="button"
               onClick={onSignInClick ?? (() => signIn("github", { redirectTo: pathname }))}
-              className="rounded-full bg-neutral-900 dark:bg-white px-4 py-2 text-sm font-bold text-white dark:text-neutral-900 transition-colors hover:bg-neutral-700 dark:hover:bg-neutral-200"
+              className="rounded-full bg-accent px-4 py-2 text-sm font-bold text-accent-ink transition-transform hover:scale-105"
             >
               Sign in
             </button>
@@ -190,7 +190,7 @@ export default function SiteNav({ onSignInClick }: SiteNavProps) {
             aria-modal="true"
             aria-labelledby="account-modal-title"
             tabIndex={-1}
-            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-2xl outline-none"
+            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-3xl border border-line bg-surface p-6 shadow-2xl outline-none"
           >
             <div className="flex items-start justify-between gap-4">
               <h2 id="account-modal-title" className="text-lg font-semibold">
@@ -200,7 +200,7 @@ export default function SiteNav({ onSignInClick }: SiteNavProps) {
                 type="button"
                 onClick={() => setShowAccountModal(false)}
                 aria-label="Close"
-                className="rounded-full p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-white/10 dark:hover:text-white"
+                className="rounded-full p-1.5 text-muted transition-colors hover:bg-white/10 hover:text-accent"
               >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
@@ -209,7 +209,7 @@ export default function SiteNav({ onSignInClick }: SiteNavProps) {
             </div>
 
             {accountLoading && !accountStatus ? (
-              <p className="mt-4 text-sm text-neutral-500 dark:text-neutral-400">Loading…</p>
+              <p className="mt-4 text-sm text-muted">Loading…</p>
             ) : accountStatus ? (
               <div className="mt-4 space-y-6">
                 <div>
@@ -219,15 +219,15 @@ export default function SiteNav({ onSignInClick }: SiteNavProps) {
                   <button
                     type="button"
                     onClick={() => signOut({ redirectTo: "/" })}
-                    className="mt-3 rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium"
+                    className="mt-3 rounded-full border border-line transition-colors hover:border-accent hover:text-accent px-4 py-2 text-sm font-medium"
                   >
                     Sign out
                   </button>
                 </div>
 
-                <div className="border-t border-neutral-200 dark:border-neutral-800 pt-6">
+                <div className="border-t border-line pt-6">
                   <h3 className="text-sm font-semibold">GitHub repo push</h3>
-                  <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+                  <p className="mt-2 text-sm text-muted">
                     When enabled, a new GitHub repo is created automatically from your boilerplate the next time
                     you sign up from a guest session.
                   </p>
@@ -254,7 +254,7 @@ export default function SiteNav({ onSignInClick }: SiteNavProps) {
                           type="button"
                           onClick={() => toggleAutoPush(!accountStatus.autoPushToGithub)}
                           disabled={accountActionBusy || (accountStatus.connectionNeedsReauth && !accountStatus.autoPushToGithub)}
-                          className="rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium disabled:opacity-50"
+                          className="rounded-full border border-line transition-colors hover:border-accent hover:text-accent px-4 py-2 text-sm font-medium disabled:opacity-50"
                         >
                           {accountStatus.autoPushToGithub ? "Turn off auto-push" : "Turn on auto-push"}
                         </button>
@@ -262,7 +262,7 @@ export default function SiteNav({ onSignInClick }: SiteNavProps) {
                           type="button"
                           onClick={disconnectGithubAccount}
                           disabled={accountActionBusy}
-                          className="rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium disabled:opacity-50"
+                          className="rounded-full border border-line transition-colors hover:border-accent hover:text-accent px-4 py-2 text-sm font-medium disabled:opacity-50"
                         >
                           Disconnect GitHub
                         </button>
@@ -272,14 +272,14 @@ export default function SiteNav({ onSignInClick }: SiteNavProps) {
                     <button
                       type="button"
                       onClick={connectGithubForRepoAccess}
-                      className="mt-4 rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium"
+                      className="mt-4 rounded-full bg-accent text-accent-ink font-semibold transition-transform hover:scale-[1.03] active:scale-95 disabled:hover:scale-100 px-4 py-2 text-sm font-medium"
                     >
                       Connect GitHub for repo access
                     </button>
                   )}
 
                   {accountStatus.lastPush && (
-                    <div className="mt-4 rounded-md border border-neutral-200 dark:border-neutral-800 p-3 text-sm">
+                    <div className="mt-4 rounded-md border border-line p-3 text-sm">
                       <p className="font-medium">Last push</p>
                       {accountStatus.lastPush.repoUrl ? (
                         <p className="mt-1">
@@ -301,7 +301,7 @@ export default function SiteNav({ onSignInClick }: SiteNavProps) {
                               reauth, the only way that combination happens is a stale record from
                               before the most recent reconnect. */}
                           {!accountStatus.connectionNeedsReauth && accountStatus.lastPush.error?.includes("failed (401)") && (
-                            <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                            <p className="mt-1 text-xs text-muted">
                               Recorded before your most recent reconnect, so this doesn&apos;t reflect your current
                               connection — it&apos;ll update the next time an auto-push runs.
                             </p>

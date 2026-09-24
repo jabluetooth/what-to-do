@@ -13,9 +13,9 @@ import {
 import { getLatestGithubPushResult } from "@/lib/github/pushBoilerplate";
 
 const buttonClass =
-  "rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium disabled:opacity-50";
+  "rounded-full bg-accent text-accent-ink font-semibold transition-transform hover:scale-[1.03] active:scale-95 disabled:hover:scale-100 px-4 py-2 text-sm font-medium disabled:opacity-50";
 const secondaryButtonClass =
-  "rounded-md border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium";
+  "rounded-full border border-line transition-colors hover:border-accent hover:text-accent px-4 py-2 text-sm font-medium";
 
 /**
  * Started as a Slice 7 sign-in smoke test; now also the one settings surface signed-in users
@@ -83,7 +83,7 @@ export default async function AccountPage() {
       <p className="mt-2 text-sm">
         Signed in as <strong>{session.user.email ?? session.user.name}</strong>
       </p>
-      <p className="text-xs text-neutral-500 dark:text-neutral-400">User ID: {session.user.id}</p>
+      <p className="text-xs text-muted">User ID: {session.user.id}</p>
       <form
         className="mt-3"
         action={async () => {
@@ -96,10 +96,10 @@ export default async function AccountPage() {
         </button>
       </form>
 
-      <hr className="my-8 border-neutral-200 dark:border-neutral-800" />
+      <hr className="my-8 border-line" />
 
       <h2 className="text-lg font-semibold">GitHub repo push</h2>
-      <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+      <p className="mt-2 text-sm text-muted">
         When enabled, a new GitHub repo is created automatically from your boilerplate the next time you sign up
         from a guest session.
       </p>
@@ -170,7 +170,7 @@ export default async function AccountPage() {
       )}
 
       {lastPush && (
-        <div className="mt-4 rounded-md border border-neutral-200 dark:border-neutral-800 p-3 text-sm">
+        <div className="mt-4 rounded-md border border-line p-3 text-sm">
           <p className="font-medium">Last push</p>
           {lastPush.repoUrl ? (
             <p className="mt-1">
@@ -182,7 +182,7 @@ export default async function AccountPage() {
             <>
               <p className="mt-1 text-red-600 dark:text-red-400">Failed: {lastPush.error}</p>
               {connection && connection.usable && lastPush.createdAt < connection.updatedAt && (
-                <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                <p className="mt-1 text-xs text-muted">
                   Recorded before your most recent reconnect, so this doesn&apos;t reflect your current
                   connection — it&apos;ll update the next time an auto-push runs.
                 </p>

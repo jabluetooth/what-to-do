@@ -1,64 +1,43 @@
 "use client";
 
-import { useRevealOnScroll } from "@/lib/useRevealOnScroll";
+import { motion } from "framer-motion";
+import { EASE, Kicker, LineReveal } from "@/components/fx/Reveal";
 
-/**
- * Plain feature checklist, no marketing copy — mirrors floe.one's capabilities grid (short
- * headline + one line, whitespace and a border-t divider doing the separating instead of cards).
- * Every line here is a real, verifiable behavior of the shipped pipeline, not an aspiration.
- */
+/** Every line here is a real, verifiable behavior of the shipped pipeline, not an aspiration. */
 const CAPABILITIES = [
-  {
-    title: "No signup to try it",
-    body: "The full pipeline — idea, PRD, stack, boilerplate, live preview — works as a guest.",
-  },
-  {
-    title: "Boot-tested output",
-    body: "Every generated project is checked for valid syntax before delivery, and actually installs and runs in-browser via WebContainer before you download it.",
-  },
-  {
-    title: "CLI or browser",
-    body: "npx create-whattodo drives the same pipeline as this page — pick whichever fits how you work.",
-  },
-  {
-    title: "A real, connected UI",
-    body: "The generated homepage fetches and posts to its own API route — not a static page next to a disconnected backend.",
-  },
-  {
-    title: "Guest data expires on its own",
-    body: "Nothing lingers after inactivity — sandbox sessions and their files are deleted automatically.",
-  },
-  {
-    title: "Push straight to GitHub",
-    body: "Sign in once, and a new repo is created automatically from what you generate.",
-  },
+  { title: "No signup", body: "The whole pipeline works as a guest." },
+  { title: "Boot-tested", body: "Installs and runs in-browser before you download." },
+  { title: "CLI or browser", body: "npx create-whattodo drives the same pipeline." },
+  { title: "Connected UI", body: "The generated frontend really calls its own API." },
+  { title: "Self-expiring", body: "Idle guest data deletes itself." },
+  { title: "GitHub push", body: "Sign in once, get a repo per project." },
 ];
 
 export default function CapabilitiesSection() {
-  const { ref: gridRef, visible } = useRevealOnScroll<HTMLUListElement>();
-
   return (
-    <section
-      id="capabilities"
-      className="mx-auto w-full max-w-5xl px-6 sm:px-12 py-24 border-t border-neutral-200 dark:border-neutral-800"
-    >
-      <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
-        Capabilities
-      </p>
-      <h2 className="mt-4 text-2xl sm:text-3xl font-bold tracking-tight">What&apos;s actually true, not just promised</h2>
+    <section id="capabilities" className="mx-auto w-full max-w-6xl px-5 py-28 sm:px-10">
+      <Kicker>Capabilities</Kicker>
+      <LineReveal
+        lines={["True today,", <span key="b" className="text-muted">not someday.</span>]}
+        className="mt-5 font-display text-6xl uppercase leading-[0.9] sm:text-8xl"
+      />
 
-      <ul ref={gridRef} className="mt-12 grid grid-cols-1 gap-x-10 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
+      <ul className="mt-16 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {CAPABILITIES.map((item, index) => (
-          <li
+          <motion.li
             key={item.title}
-            className={`border-t border-neutral-200 dark:border-neutral-800 pt-4 ${
-              visible ? "[animation:fade-in-up_0.4s_ease-out_backwards]" : ""
-            }`}
-            style={visible ? { animationDelay: `${index * 70}ms` } : undefined}
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-8% 0px" }}
+            transition={{ duration: 0.7, ease: EASE, delay: (index % 3) * 0.08 }}
+            className="group border-t border-line py-8 sm:pr-8"
           >
-            <p className="font-semibold">{item.title}</p>
-            <p className="mt-1.5 text-sm text-neutral-600 dark:text-neutral-400">{item.body}</p>
-          </li>
+            <div className="flex items-center gap-3">
+              <span className="h-2 w-2 rounded-full bg-line transition-all duration-300 group-hover:scale-150 group-hover:bg-accent" aria-hidden="true" />
+              <p className="font-display text-3xl uppercase transition-colors duration-300 group-hover:text-accent">{item.title}</p>
+            </div>
+            <p className="mt-2 pl-5 text-sm text-muted">{item.body}</p>
+          </motion.li>
         ))}
       </ul>
     </section>

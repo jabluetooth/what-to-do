@@ -153,7 +153,7 @@ function PrdSectionsAccordion({ sections }: { sections: PrdSection[] }) {
   }
 
   return (
-    <div className="divide-y divide-neutral-200 dark:divide-neutral-800 overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800">
+    <div className="divide-y divide-line overflow-hidden rounded-lg border border-line">
       {sections.map((section) => {
         const isOpen = expanded.has(section.key);
         return (
@@ -164,7 +164,7 @@ function PrdSectionsAccordion({ sections }: { sections: PrdSection[] }) {
               aria-expanded={isOpen}
               className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-neutral-50 dark:hover:bg-white/5"
             >
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-accent-ink">
                 {getSectionIcon(section.key)}
               </span>
               <span className="min-w-0 flex-1 truncate text-sm font-medium">{section.title}</span>
@@ -180,7 +180,7 @@ function PrdSectionsAccordion({ sections }: { sections: PrdSection[] }) {
               </svg>
             </button>
             {isOpen && (
-              <p className="whitespace-pre-wrap px-3 pb-3 pl-10 text-sm text-neutral-600 dark:text-neutral-400">
+              <p className="whitespace-pre-wrap px-3 pb-3 pl-10 text-sm text-muted">
                 {section.content}
               </p>
             )}
@@ -254,7 +254,7 @@ export default function HistoryPage() {
       <main className="relative z-10 mx-auto w-full max-w-2xl px-6 pt-20 pb-16">
         <h1 className="text-2xl font-semibold tracking-tight">History</h1>
 
-        {state === "loading" && <p className="mt-8 text-sm text-neutral-500 dark:text-neutral-400">Loading…</p>}
+        {state === "loading" && <p className="mt-8 text-sm text-muted">Loading…</p>}
 
         {state === "error" && (
           <p className="mt-8 text-sm text-red-600 dark:text-red-400">Couldn&apos;t load your history right now.</p>
@@ -262,11 +262,11 @@ export default function HistoryPage() {
 
         {state === "signed-out" && (
           <div className="mt-8">
-            <p className="text-sm text-neutral-600 dark:text-neutral-400">Sign in to see your saved projects.</p>
+            <p className="text-sm text-muted">Sign in to see your saved projects.</p>
             <button
               type="button"
               onClick={() => signIn("github", { redirectTo: "/history" })}
-              className="mt-4 rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-4 py-2 text-sm font-medium"
+              className="mt-4 rounded-full bg-accent text-accent-ink font-semibold transition-transform hover:scale-[1.03] active:scale-95 disabled:hover:scale-100 px-4 py-2 text-sm font-medium"
             >
               Sign in with GitHub
             </button>
@@ -285,7 +285,7 @@ export default function HistoryPage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search by topic, tech stack, or name"
-                className="flex-1 rounded-md border border-neutral-300 dark:border-neutral-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100"
+                className="flex-1 rounded-xl border border-line bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
               />
               <label htmlFor="history-platform" className="sr-only">
                 Filter by platform
@@ -294,28 +294,28 @@ export default function HistoryPage() {
                 id="history-platform"
                 value={platformFilter}
                 onChange={(e) => setPlatformFilter(e.target.value as "all" | PlatformHint)}
-                className="rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm sm:w-40"
+                className="rounded-xl border border-line bg-background px-3 py-2 text-sm sm:w-40"
               >
-                <option value="all" className="bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100">
+                <option value="all" className="bg-accent-ink text-accent">
                   All platforms
                 </option>
-                <option value="web" className="bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100">
+                <option value="web" className="bg-accent-ink text-accent">
                   Web
                 </option>
-                <option value="mobile" className="bg-white text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100">
+                <option value="mobile" className="bg-accent-ink text-accent">
                   Mobile
                 </option>
               </select>
             </div>
 
             {projects.length === 0 ? (
-              <p className="mt-6 text-sm text-neutral-500 dark:text-neutral-400">
+              <p className="mt-6 text-sm text-muted">
                 No saved projects yet — sign up from a guest session to keep one here.
               </p>
             ) : filtered.length === 0 ? (
-              <p className="mt-6 text-sm text-neutral-500 dark:text-neutral-400">No projects match that search.</p>
+              <p className="mt-6 text-sm text-muted">No projects match that search.</p>
             ) : (
-              <ul className="mt-6 divide-y divide-neutral-200 dark:divide-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-800">
+              <ul className="mt-6 divide-y divide-line rounded-xl border border-line">
                 {filtered.map((project) => (
                   <li key={project.projectId}>
                     <button
@@ -324,7 +324,7 @@ export default function HistoryPage() {
                       className="block w-full px-4 py-3 text-left hover:bg-neutral-50 dark:hover:bg-white/5"
                     >
                       <p className="truncate text-sm font-medium">{project.prompt}</p>
-                      <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+                      <p className="mt-0.5 text-xs text-muted">
                         {new Date(project.createdAt).toLocaleDateString(undefined, {
                           year: "numeric",
                           month: "short",
@@ -354,14 +354,14 @@ export default function HistoryPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="history-detail-title"
-            className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-2xl"
+            className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-line bg-surface shadow-2xl"
           >
-            <div className="flex items-start justify-between gap-4 border-b border-neutral-200 dark:border-neutral-800 px-6 py-5">
+            <div className="flex items-start justify-between gap-4 border-b border-line px-6 py-5">
               <div className="min-w-0">
                 <h2 id="history-detail-title" className="text-sm font-medium leading-snug">
                   {selected.prompt}
                 </h2>
-                <p className="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                <p className="mt-1.5 text-xs text-muted">
                   {new Date(selected.createdAt).toLocaleDateString(undefined, {
                     year: "numeric",
                     month: "short",
@@ -374,7 +374,7 @@ export default function HistoryPage() {
                 type="button"
                 onClick={() => setSelected(null)}
                 aria-label="Close"
-                className="shrink-0 rounded-full p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-white/10 dark:hover:text-white"
+                className="shrink-0 rounded-full p-1.5 text-muted transition-colors hover:bg-white/10 hover:text-accent"
               >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
@@ -387,24 +387,24 @@ export default function HistoryPage() {
                 {selected.hasBoilerplate && selected.webContainerCompatible ? (
                   <Link
                     href={`/preview/project/${selected.projectId}`}
-                    className="rounded-md bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 px-3.5 py-2 text-sm font-medium"
+                    className="rounded-full bg-accent text-accent-ink font-semibold transition-transform hover:scale-[1.03] active:scale-95 disabled:hover:scale-100 px-3.5 py-2 text-sm font-medium"
                   >
                     Preview
                   </Link>
                 ) : (
-                  <span className="inline-flex items-center rounded-md border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.02] px-3.5 py-2 text-sm text-neutral-400 dark:text-neutral-600">
+                  <span className="inline-flex items-center rounded-md border border-line bg-neutral-50 dark:bg-white/[0.02] px-3.5 py-2 text-sm text-neutral-400 dark:text-neutral-600">
                     Not available for preview
                   </span>
                 )}
                 {selected.hasBoilerplate ? (
                   <a
                     href={`/api/account/history/${selected.projectId}/download`}
-                    className="rounded-md border border-neutral-300 dark:border-neutral-700 px-3.5 py-2 text-sm font-medium"
+                    className="rounded-full border border-line transition-colors hover:border-accent hover:text-accent px-3.5 py-2 text-sm font-medium"
                   >
                     Download
                   </a>
                 ) : (
-                  <span className="inline-flex items-center rounded-md border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.02] px-3.5 py-2 text-sm text-neutral-400 dark:text-neutral-600">
+                  <span className="inline-flex items-center rounded-md border border-line bg-neutral-50 dark:bg-white/[0.02] px-3.5 py-2 text-sm text-neutral-400 dark:text-neutral-600">
                     No boilerplate to download
                   </span>
                 )}
@@ -412,7 +412,7 @@ export default function HistoryPage() {
 
               {selected.sections.length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
+                  <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-muted">
                     Product Requirements
                   </p>
                   <div className="mt-2">
@@ -423,7 +423,7 @@ export default function HistoryPage() {
 
               {selected.stack && (
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
+                  <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-muted">
                     Tech Stack
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
@@ -431,9 +431,9 @@ export default function HistoryPage() {
                       <span
                         key={key}
                         title={`${label}: ${selected.stack![key].choice}`}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-white/[0.03] px-2.5 py-1 text-xs"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-line bg-neutral-50 dark:bg-white/[0.03] px-2.5 py-1 text-xs"
                       >
-                        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900">
+                        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent text-accent-ink">
                           {getStackCategoryIcon(key)}
                         </span>
                         {selected.stack![key].choice}

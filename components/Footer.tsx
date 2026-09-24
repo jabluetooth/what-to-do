@@ -37,7 +37,7 @@ function FooterColumn({ title, links }: { title: string; links: FooterLink[] }) 
           <li key={link.href}>
             <Link
               href={link.href}
-              className="text-sm text-neutral-400 hover:text-white transition-colors"
+              className="text-sm text-muted hover:text-accent transition-colors"
             >
               {link.label}
             </Link>
@@ -52,23 +52,20 @@ function FooterColumn({ title, links }: { title: string; links: FooterLink[] }) 
  * Same two-panel format as this account's other projects (Insight, Bonny
  * AI, Mimo, ZeroPress): a brand panel plus a links panel, both rounded on
  * the top corners only and flush at the bottom instead of floating as
- * closed rectangles. This app has no accent color anywhere (pure
- * neutral/monochrome, forced dark) — so instead of an accent-filled brand
- * panel, it uses the same inverted white-on-dark treatment the app already
- * uses for its own "selected" states (see OPTION_CLASS in app/page.tsx),
- * rather than introducing a color that doesn't exist elsewhere.
+ * closed rectangles. The brand panel takes the site's one accent (lime), the
+ * same flood the idea roller lands in.
  */
 export default function Footer() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="mx-auto w-full max-w-5xl px-6 sm:px-12">
+    <footer className="mx-auto w-full max-w-6xl px-5 sm:px-10">
       <div className="flex flex-wrap items-stretch justify-between gap-6 pt-16">
-        <div className="flex-1 min-w-[240px] min-h-[220px] flex flex-col justify-between gap-6 rounded-t-2xl bg-white text-neutral-900 px-8 pt-8 pb-6">
-          <span className="text-lg font-bold tracking-tight">What To Do?</span>
+        <div className="flex-1 min-w-[240px] min-h-[220px] flex flex-col justify-between gap-6 rounded-t-3xl bg-accent text-accent-ink px-8 pt-8 pb-6">
+          <span className="font-display text-5xl uppercase leading-none">What To Do?</span>
 
           <div className="flex flex-col gap-3">
-            <p className="text-sm text-neutral-600 max-w-[34ch]">
+            <p className="text-sm text-accent-ink/75 max-w-[34ch]">
               From an idea to a scoped, scaffolded, running project in one prompt.
             </p>
             <div className="flex items-center gap-1">
@@ -79,13 +76,13 @@ export default function Footer() {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={label}
-                  className="inline-flex items-center justify-center h-9 w-9 text-neutral-500 hover:text-neutral-900 transition-colors"
+                  className="inline-flex items-center justify-center h-9 w-9 text-accent-ink/60 hover:text-accent-ink transition-colors"
                 >
                   <Icon />
                 </a>
               ))}
             </div>
-            <p className="text-xs text-neutral-400">
+            <p className="text-xs text-accent-ink/60">
               &copy; {year} What To Do? by Fil Heinz Re La Torre
             </p>
           </div>
@@ -93,7 +90,7 @@ export default function Footer() {
 
         <nav
           aria-label="Footer"
-          className="flex-none w-full sm:w-[300px] flex gap-10 rounded-t-2xl border border-neutral-800 bg-white/[0.03] px-8 pt-8 pb-6"
+          className="flex-none w-full sm:w-[300px] flex gap-10 rounded-t-3xl border border-line bg-surface px-8 pt-8 pb-6"
         >
           <FooterColumn title="Site" links={SITE_LINKS} />
           <FooterColumn title="Account" links={ACCOUNT_LINKS} />

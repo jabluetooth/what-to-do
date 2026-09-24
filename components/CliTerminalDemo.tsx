@@ -77,7 +77,7 @@ function lineClassName(tone: Tone): string {
     case "command":
       return "text-neutral-100 font-medium";
     case "success":
-      return "text-neutral-100";
+      return "text-accent";
     case "muted":
       return "text-neutral-500";
     default:
@@ -196,9 +196,12 @@ export default function CliTerminalDemo() {
   const displayed = current ? [...lines, current] : lines;
 
   return (
-    <div ref={ref} className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950">
-      <div className="border-b border-neutral-800 px-4 py-2.5">
-        <span className="font-mono text-[11px] uppercase tracking-widest text-neutral-500">Terminal</span>
+    <div ref={ref} className="overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_40px_120px_-40px_rgba(212,255,58,0.25)]">
+      <div className="flex items-center gap-2 border-b border-line px-4 py-3">
+        <span className="h-2.5 w-2.5 rounded-full bg-line" aria-hidden="true" />
+        <span className="h-2.5 w-2.5 rounded-full bg-line" aria-hidden="true" />
+        <span className="h-2.5 w-2.5 rounded-full bg-accent" aria-hidden="true" />
+        <span className="ml-2 font-mono text-[11px] uppercase tracking-widest text-muted">Terminal</span>
       </div>
       <div className="min-h-[400px] overflow-x-auto px-5 py-5 font-mono text-[13px] leading-relaxed">
         {displayed.map((line, i) => {
@@ -209,7 +212,7 @@ export default function CliTerminalDemo() {
               {isLast && isTyping && (
                 <span
                   aria-hidden="true"
-                  className="ml-0.5 inline-block h-[1em] w-[0.5em] translate-y-[0.15em] bg-neutral-100 align-baseline [animation:blink-cursor_1s_steps(1)_infinite]"
+                  className="ml-0.5 inline-block h-[1em] w-[0.5em] translate-y-[0.15em] bg-accent align-baseline [animation:blink-cursor_1s_steps(1)_infinite]"
                 />
               )}
             </div>
