@@ -19,6 +19,18 @@ const STATE_TTL_SECONDS = 5 * 60;
  */
 const APP_SCHEME_PREFIX = "whattodo://";
 
+/**
+ * The mobile app's EAS project. Expo Go running a published update resolves the auth callback to
+ * `exp://u.expo.dev/<projectId>/--/auth-callback`, and only this project's owner can publish
+ * updates under this id — so a public host is safe here when (and only when) the path is pinned
+ * to it. Lets the README's "scan to try" QR sign in end to end.
+ */
+const EXPO_PROJECT_ID = "4a497563-25ce-472d-b169-52634ae6b19d";
+
+function isOwnExpoUpdate(url: URL): boolean {
+  return url.hostname === "u.expo.dev" && (url.pathname === `/${EXPO_PROJECT_ID}` || url.pathname.startsWith(`/${EXPO_PROJECT_ID}/`));
+}
+
 function isPrivateHost(hostname: string): boolean {
   if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]") return true;
   const octets = hostname.split(".").map(Number);
@@ -31,7 +43,8 @@ function isAllowedRedirect(redirectUri: string): boolean {
   if (redirectUri.startsWith(APP_SCHEME_PREFIX)) return true;
   if (!redirectUri.startsWith("exp://")) return false;
   try {
-    return isPrivateHost(new URL(redirectUri).hostname);
+    const url = new URL(redirectUri);
+    return isPrivateHost(url.hostname) || isOwnExpoUpdate(url);
   } catch {
     return false;
   }
