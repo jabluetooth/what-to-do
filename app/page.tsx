@@ -481,6 +481,31 @@ export default function Home() {
   useEffect(() => {
     if (prefillConsumedRef.current) return;
     const params = new URLSearchParams(window.location.search);
+
+    // A prompt the user wrote themselves on mobile (lib/webLink.ts's continuePromptOnWebUrl),
+    // with the same optional hints the intake form has.
+    const typedPrompt = params.get("prompt")?.trim().slice(0, 2000);
+    if (typedPrompt) {
+      prefillConsumedRef.current = true;
+      const p = params.get("platform");
+      const s = params.get("scope");
+      const stack = params.get("stack")?.slice(0, 300) ?? "";
+      const promptHints = {
+        platform: p === "web" || p === "mobile" ? p : undefined,
+        scopeSize: s === "weekend" || s === "mvp" || s === "production" ? s : undefined,
+        stackFamiliarity: stack || undefined,
+      } as const;
+      // One-time hydration from the URL on mount, guarded by the ref like the idea case below.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPrompt(typedPrompt);
+      setPlatform(promptHints.platform ?? "");
+      setScopeSize(promptHints.scopeSize ?? "");
+      setStackFamiliarity(stack);
+      window.history.replaceState(null, "", window.location.pathname);
+      void submitPrompt(typedPrompt, promptHints);
+      return;
+    }
+
     const title = params.get("title");
     const targetUser = params.get("targetUser");
     const description = params.get("description");
@@ -490,7 +515,6 @@ export default function Home() {
     prefillConsumedRef.current = true;
     // One-time hydration from the URL on mount, not a reactive sync — the ref above already
     // guards against this ever running more than once, so there's no cascading-render risk.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     const promptText = applyIdeaToPromptState({ title, targetUser, description, platformTag });
     window.history.replaceState(null, "", window.location.pathname);
     setRollerOpen(true);
