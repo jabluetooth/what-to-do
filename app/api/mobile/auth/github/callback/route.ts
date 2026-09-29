@@ -6,18 +6,17 @@ import { requireEnv } from "@/lib/env";
 import { getDb } from "@/lib/db/client";
 import { users, accounts } from "@/lib/db/schema";
 import { mintMobileToken } from "@/lib/mobileAuth";
+import { mobileOAuthStateKey } from "@/lib/mobileRedirect";
+import { hasRepoScope, upsertGithubConnection } from "@/lib/github/connection";
 
 const REQUEST_TIMEOUT_MS = 15_000;
 
-function stateKey(state: string): string {
-  return `mobile-auth-state:${state}`;
-}
-
 const TokenResponseSchema = z.object({
   access_token: z.string(),
+  scope: z.string().optional(),
 });
 
-async function exchangeCodeForToken(code: string): Promise<string> {
+async function exchangeCodeForToken(code: string): Promise<{ accessToken: string; scope: string }> {
   const res = await fetch("https://github.com/login/oauth/access_token", {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
@@ -36,7 +35,7 @@ async function exchangeCodeForToken(code: string): Promise<string> {
   if (!parsed.success) {
     throw new Error(`GitHub token exchange returned an unexpected shape: ${JSON.stringify(json)}`);
   }
-  return parsed.data.access_token;
+  return { accessToken: parsed.data.access_token, scope: parsed.data.scope ?? "" };
 }
 
 const GithubUserSchema = z.object({
@@ -143,8 +142,8 @@ export async function GET(request: Request) {
   }
 
   // One-time use: whether this completes successfully or not, the same state can't be replayed.
-  const stored = await getRedis().get<{ redirectUri: string }>(stateKey(state));
-  await getRedis().del(stateKey(state));
+  const stored = await getRedis().get<StoredState>(mobileOAuthStateKey(state));
+  await getRedis().del(mobileOAuthStateKey(state));
   if (!stored) {
     return new NextResponse("This sign-in link has expired. Please try again from the app.", { status: 400 });
   }
@@ -153,9 +152,15 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${stored.redirectUri}?error=access_denied`);
   }
 
+  // "Connect GitHub" (repo access for pushing), started by a signed-in user from the phone:
+  // store the repo-scoped token for that user, then return to the app. No new session token.
+  if (stored.purpose === "connect" && stored.userId) {
+    return completeConnect(code, stored.userId, stored.redirectUri);
+  }
+
   let profile: GithubProfile | null;
   try {
-    const accessToken = await exchangeCodeForToken(code);
+    const { accessToken } = await exchangeCodeForToken(code);
     profile = await fetchGithubProfile(accessToken);
   } catch (err) {
     console.error("[mobile-auth] github exchange/profile fetch failed:", err);
@@ -175,4 +180,37 @@ export async function GET(request: Request) {
 
   const token = await mintMobileToken(userId);
   return NextResponse.redirect(`${stored.redirectUri}?token=${encodeURIComponent(token)}`);
+}
+
+interface StoredState {
+  redirectUri: string;
+  /** Absent for sign-in; "connect" for the push-permission grant (app/api/mobile/github/connect). */
+  purpose?: "connect";
+  /** The signed-in user who started a connect, bound server-side before the browser leg. */
+  userId?: string;
+}
+
+async function completeConnect(code: string, userId: string, redirectUri: string): Promise<NextResponse> {
+  try {
+    const { accessToken, scope } = await exchangeCodeForToken(code);
+    // GitHub lets the user trim scopes on the consent screen; without repo, pushing can't work.
+    if (!hasRepoScope(scope)) {
+      return NextResponse.redirect(`${redirectUri}?error=repo_scope_missing`);
+    }
+    const res = await fetch("https://api.github.com/user", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(`GitHub /user failed (${res.status})`);
+    const { login } = z.object({ login: z.string() }).parse(await res.json());
+    await upsertGithubConnection({ userId, githubLogin: login, accessToken, scope });
+    return NextResponse.redirect(`${redirectUri}?connected=1`);
+  } catch (err) {
+    console.error("[mobile-auth] github connect failed:", err);
+    return NextResponse.redirect(`${redirectUri}?error=server_error`);
+  }
 }

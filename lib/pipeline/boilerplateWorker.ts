@@ -1,4 +1,8 @@
-import { getJob, updateJob, claimJobRun, releaseJobRun } from "@/lib/pipeline/jobs";
+import { eq } from "drizzle-orm";
+import { getJob, updateJob, claimJobRun, releaseJobRun, type JobRecord } from "@/lib/pipeline/jobs";
+import { getDb } from "@/lib/db/client";
+import { boilerplateVersions, projects } from "@/lib/db/schema";
+import { getLatestVersions, getOwnedProject } from "@/lib/mobile/projects";
 import { readGuestSession, writeGuestSessionData } from "@/lib/redis/guestSession";
 import { loadTemplate, type TemplateFile } from "@/lib/pipeline/template";
 import { resolveTemplate } from "@/lib/pipeline/templateRegistry";
@@ -36,6 +40,12 @@ export async function runBoilerplateJob(jobId: string): Promise<void> {
   try {
     const job = await getJob(jobId);
     if (!job) return;
+
+    // Mobile builds generate from a saved project, not a guest session.
+    if (job.projectId && job.userId) {
+      await runProjectBoilerplateJob(job);
+      return;
+    }
 
     const session = await readGuestSession(job.sessionId);
     if (!session || !session.prdSections || !session.prompt) {
@@ -154,5 +164,90 @@ export async function runBoilerplateJob(jobId: string): Promise<void> {
     }
   } finally {
     await releaseJobRun(jobId);
+  }
+}
+
+/**
+ * The mobile build: same template -> LLM fill-in -> write -> validate pipeline as above, but the
+ * PRD and stack come from a saved project (Postgres) and a success becomes a new
+ * boilerplate_version row under "project/{projectId}/{versionId}" — the same place a converted
+ * web project's files live, so the web's History (download, preview) works on it too.
+ * Runs under the caller's run lock (runBoilerplateJob), and refunds follow the same policy:
+ * only platform-side failures give the cap unit back.
+ */
+async function runProjectBoilerplateJob(job: JobRecord): Promise<void> {
+  const { id: jobId, projectId, userId, sessionId } = job;
+  if (!projectId || !userId) return;
+
+  const project = await getOwnedProject(userId, projectId);
+  const versions = project ? await getLatestVersions(projectId) : null;
+  if (!project || !versions?.prd?.sections.length) {
+    await updateJob(jobId, { state: "failed", progress: 100, message: "Project not found", error: "Project or PRD missing." });
+    await refundGenerationCap(sessionId, "boilerplate", "signedIn");
+    return;
+  }
+
+  const versionId = crypto.randomUUID();
+  const prefix = `project/${projectId}/${versionId}`;
+  try {
+    const descriptor = resolveTemplate(versions.stack?.backend.choice);
+    const impl = getTemplateImplementation(descriptor.id);
+
+    await updateJob(jobId, { state: "running", progress: 5, message: "Selecting template..." });
+    const templateFiles = await loadTemplate(descriptor.id);
+
+    const files = await impl.generateFillIn(
+      templateFiles,
+      { prompt: project.prompt, sections: versions.prd.sections },
+      async (progress, message) => {
+        await updateJob(jobId, { progress, message });
+      }
+    );
+
+    await updateJob(jobId, { progress: 60, message: "Writing project files..." });
+    const zip = await buildZip(files);
+    await Promise.all([writeProjectFiles(prefix, files), writeProjectZip(prefix, zip)]);
+
+    const validation = await runValidation(impl, files, jobId);
+    if (!validation.passed) {
+      await deleteProjectFiles(prefix).catch(() => {});
+      await updateJob(jobId, {
+        state: "failed",
+        progress: 100,
+        message: "Build validation failed",
+        error: validation.log.slice(-MAX_LOG_CHARS),
+      });
+      if (validation.diskFull) await refundGenerationCap(sessionId, "boilerplate", "signedIn");
+      return;
+    }
+
+    const db = getDb();
+    await db.batch([
+      db.insert(boilerplateVersions).values({
+        id: versionId,
+        projectId,
+        r2Prefix: prefix,
+        webContainerCompatible: descriptor.webContainerCompatible,
+      }),
+      db.update(projects).set({ boilerplateStale: false, updatedAt: new Date() }).where(eq(projects.id, projectId)),
+    ]);
+
+    await updateJob(jobId, {
+      state: "succeeded",
+      progress: 100,
+      message: validation.unvalidated ? "Done (no Python interpreter found — not syntax-checked)" : "Done",
+      resultRef: prefix,
+      boilerplateVersionId: versionId,
+      webContainerCompatible: descriptor.webContainerCompatible,
+      unvalidated: validation.unvalidated ?? false,
+    });
+  } catch (err) {
+    await deleteProjectFiles(prefix).catch(() => {});
+    await updateJob(jobId, {
+      state: "failed",
+      progress: 100,
+      message: "Generation failed",
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }

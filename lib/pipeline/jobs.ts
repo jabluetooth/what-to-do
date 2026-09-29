@@ -21,6 +21,15 @@ export interface JobRecord {
   attempt: number;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Set for a mobile build: the job generates from a saved project (Postgres) instead of a guest
+   * session (Redis), and its result becomes a boilerplate_version row. userId is the owner, so
+   * the worker never trusts a projectId it wasn't handed together with its owner.
+   */
+  projectId?: string;
+  userId?: string;
+  /** The boilerplate_version row a succeeded project job wrote. */
+  boilerplateVersionId?: string;
 }
 
 /** Job lifetime + buffer — independent of the guest session TTL (see build plan §2). */
@@ -66,13 +75,18 @@ export async function claimJobRetry(jobId: string): Promise<boolean> {
   return result === "OK";
 }
 
-export async function createJob(sessionId: string, stage: "boilerplate"): Promise<JobRecord> {
+export async function createJob(
+  sessionId: string,
+  stage: "boilerplate",
+  project?: { projectId: string; userId: string }
+): Promise<JobRecord> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const job: JobRecord = {
     id,
     sessionId,
     stage,
+    ...(project ? { projectId: project.projectId, userId: project.userId } : {}),
     state: "pending",
     progress: 0,
     message: "Queued",

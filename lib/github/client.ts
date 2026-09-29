@@ -101,7 +101,8 @@ function isNameCollision(err: GithubApiError): boolean {
  * from the user's prompt (see pushBoilerplate.ts), which two different projects can plausibly
  * share, and repo names must be unique within an account.
  */
-export async function createRepo(accessToken: string, name: string, description: string): Promise<CreatedRepo> {
+/** Private unless `isPrivate` is false (the mobile app's Public switch); the web auto-push always passes the default. */
+export async function createRepo(accessToken: string, name: string, description: string, isPrivate = true): Promise<CreatedRepo> {
   const attempt = async (repoName: string) => {
     const raw = await githubRequest(accessToken, "/user/repos", {
       method: "POST",
@@ -109,7 +110,7 @@ export async function createRepo(accessToken: string, name: string, description:
       body: JSON.stringify({
         name: repoName,
         description: description.slice(0, 350),
-        private: true,
+        private: isPrivate,
         auto_init: false,
       }),
     });
