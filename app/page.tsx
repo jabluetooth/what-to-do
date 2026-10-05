@@ -8,6 +8,7 @@ import { STACK_ALTERNATIVES } from "@/lib/pipeline/stackMatrix";
 import { describeGeneratedCode } from "@/lib/pipeline/templateRegistry";
 import SiteNav from "@/components/SiteNav";
 import CliSection from "@/components/CliSection";
+import MobileSection from "@/components/MobileSection";
 import CapabilitiesSection from "@/components/CapabilitiesSection";
 import Hero from "@/components/Hero";
 import IdeaRoller from "@/components/IdeaRoller";
@@ -1627,6 +1628,8 @@ export default function Home() {
       <HowItWorks />
 
       <CliSection />
+
+      <MobileSection />
 
       <CapabilitiesSection />
 

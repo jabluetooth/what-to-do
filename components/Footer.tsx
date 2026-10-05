@@ -11,6 +11,7 @@ const SITE_LINKS: FooterLink[] = [
   { label: "Home", href: "/" },
   { label: "About", href: "/#about" },
   { label: "CLI", href: "/#cli" },
+  { label: "Mobile", href: "/#mobile" },
   { label: "FAQ", href: "/#faq" },
 ];
 
